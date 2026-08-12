@@ -53,13 +53,18 @@ def generate_graphrag_index(codebase_path: str, graphrag_source_path: str,
 
         prepare_settings(settings_config_path, settings_config_path_updated)
 
+        from utils.prompt_utils import prepare_indexing_config
+
+        logging.info("Preparing GraphRAG config files...")
+
+        prepare_indexing_config(graphrag_source_path,
+                                git_slug=git_slug or "",
+                                git_repo=git_repo or "",
+                                multi_repo=multi_repo)
+
         logging.info("Copying source code to GraphRAG directory...")
 
-        DefaultAssetLoader().download("graphrag/extract_graph.txt", download_dir="prompts")
-
         shutil.copytree(codebase_path, f"{graphrag_source_path}/input", dirs_exist_ok=True)
-
-        shutil.copytree("prompts", f"{graphrag_source_path}/prompts", dirs_exist_ok=True)
 
         logging.info(f"Running index for git_slug={git_slug}, multi_repo={multi_repo}...")
 
@@ -75,8 +80,15 @@ def generate_graphrag_index(codebase_path: str, graphrag_source_path: str,
         if proc.returncode != 0:
             raise Exception(f"GraphRAG indexing failed (exit {proc.returncode}): {proc.stdout}")
 
-        artifact_path = ("results/datasets/repos/multi-repo" if multi_repo
-                         else f"results/datasets/repos/{git_slug}").rstrip("/")
+        artifact_path = DefaultAssetLoader.get_log_results_artifact_path(
+
+            DefaultAssetLoader.RESULTS_PATH_PREFIX_REPO_DATASETS,
+
+            git_slug=git_slug,
+
+            multi_repo=multi_repo,
+
+        )
 
         DefaultAssetLoader().log_results(f"{graphrag_source_path}/output",
                                          artifact_path=artifact_path,
@@ -101,10 +113,25 @@ def generate_graphrag_index(codebase_path: str, graphrag_source_path: str,
 
         result_file = "indexing_result_multi_repo.json" if multi_repo else f"indexing_result_{git_slug}.json"
 
-        DefaultAssetLoader().log_results(result_file, artifact_path="results/pipelines",
-                                         content=json.dumps(result),
-                                         tags={"git_slug": git_slug, "category":"indexing",
-                                               "multi_repo": multi_repo})
+        DefaultAssetLoader().log_results(
+
+            result_file,
+
+            artifact_path=DefaultAssetLoader.get_log_results_artifact_path(
+
+                DefaultAssetLoader.RESULTS_PATH_PREFIX_PIPELINES,
+
+                git_slug=git_slug,
+
+                multi_repo=multi_repo,
+
+            ),
+
+            content=json.dumps(result),
+
+            tags={"git_slug": git_slug, "category": "indexing", "multi_repo": multi_repo},
+
+        )
 
 
 def evaluate_graphrag_index(graphrag_source_path: str, git_repo: str, git_branch: str,

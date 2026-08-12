@@ -1,4 +1,4 @@
-# Agent Mesh for Software Modernization - Code Understanding
+# AUGUR: Agentic Understanding for Guided Upgrade Recommendations
 
 Contents
 ---
@@ -17,9 +17,6 @@ Contents
 
 <a id="overview"></a>
 ## 🧭 Overview
-
-[![Watch the demo](https://drive.google.com/thumbnail?id=18FxSpwKBPPgzQnP1Q9ToPC_kLskrnni3&sz=w1280)](https://youtu.be/swRB1iAyGr0)
-*▶ Click to watch the demo*
 
 This demonstrates the **Code Understanding** phase of the Agent Mesh for Software Engineering, a framework pattern 
 for continuous legacy code which uses a federated, multi-harness, multi-agent 
@@ -120,9 +117,18 @@ nohup python3 -m vllm.entrypoints.openai.api_server \
 1. To run the **Code Understanding** pipeline for a single repository, run:
 ```make run-pipelines ARGS="--single-repo"```
 
-2. To run the **Code Understanding** pipeline for multiple repositories, 
-   perform the following steps:
-    - Update `assets/repos/repo_list.json` with the list of repositories to 
+   To specify the target repository or branch:
+    - Update `GIT_REPO` and `GIT_BRANCH` in `.env` to the desired repository and branch.
+    - Run the following command to update the environment variables: 
+   ```make apply-secrets```
+    - Run the following command: 
+   ```make run-pipelines ARGS="--single-repo"```
+
+   Or without modifying `.env`:
+   ```make run-pipelines ARGS="--single-repo" PIPELINE_GIT_REPO=https://github.com/org/repo PIPELINE_GIT_BRANCH=main```
+
+2. To run the **Code Understanding** pipeline for multiple repositories:
+    - Update `assets/repos/repo_list.json` with the list of repositories to
       be processed.
     - Run the following command:
    ```make run-pipelines ARGS="--multi-repo"```
@@ -131,9 +137,9 @@ nohup python3 -m vllm.entrypoints.openai.api_server \
 1. To run adhoc queries about the indexed code, run the following:
 ```wrappers/adhoc.sh <query>```
    - For example: 
-     - `wrappers/adhoc.sh "What migration order would be recommended when refactoring to reduce breaking changes? Include the fully qualified names."`
-     - `wrappers/adhoc.sh "Which modules or components would be riskiest to refactor first? Include the fully qualified names."`
-     - `wrappers/adhoc.sh "Which modules or components would be the least risky to refactor first? Include the fully qualified names."`
+     - `wrappers/adhoc.sh "What migration order would be recommended when refactoring to reduce breaking changes?."`
+     - `wrappers/adhoc.sh "Which modules or components would be riskiest to refactor first?" --git-repo https://github.com/org/repo` 
+     - `wrappers/adhoc.sh "What are the data stores in this codebase?" --git-repo https://github.com/org/repo --git-branch develop`
 
 ## More About the Code Understanding Workflow
 
@@ -162,7 +168,7 @@ representation of the codebase that can be used for querying.
 
 #### 3. Data Analysis
 
-The **Data Analysis** workbench is used to query the generated GraphRAG index using the GraphRAG SDK.
+The **Data Analysis** sub-workflow is used to query the generated GraphRAG index using the GraphRAG SDK.
 It includes both canned and adhoc queries that can be used to explore the 
 code and generate assets for the refactoring catalog, including a migration plan.
 

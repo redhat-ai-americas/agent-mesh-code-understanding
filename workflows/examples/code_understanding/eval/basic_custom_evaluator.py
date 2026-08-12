@@ -64,7 +64,7 @@ Respond ONLY with valid JSON in this exact format:
         """
         try:
 
-            analyzer = DependencyAnalyzer(root_dir=graphrag_source_dir)
+            analyzer = DependencyAnalyzer(root_dir=graphrag_source_dir, git_slug=git_slug or "", multi_repo=multi_repo)
 
             actual_answer = asyncio.run(analyzer.query_with_llm(input))
 
@@ -159,7 +159,7 @@ Respond ONLY with valid JSON in this exact format:
 
             if pd.notna(one_shot) and str(one_shot).strip():
 
-                input_text = f"{question}\n{one_shot}"
+                input_text = f"{question}\n\n**Example format:**\n{one_shot}"
 
             else:
 
@@ -187,9 +187,14 @@ Respond ONLY with valid JSON in this exact format:
         from utils import code_utils
         slug = git_slug or code_utils.generate_slug_from_repo(git_repo, git_branch)
 
-        artifact_path = (
-            f"results/evaluations/multi_repo/{slug}" if multi_repo
-            else f"results/evaluations/{slug}"
+        artifact_path = DefaultAssetLoader.get_log_results_artifact_path(
+
+            DefaultAssetLoader.RESULTS_PATH_PREFIX_EVAL,
+
+            git_slug=slug,
+
+            multi_repo=multi_repo,
+
         )
 
         df["git_slug"] = slug

@@ -1,4 +1,3 @@
-import asyncio
 import graphrag.api as api
 from graphrag.config.load_config import load_config
 from pathlib import Path
@@ -12,11 +11,22 @@ import pandas as pd
 class DependencyAnalyzer:
     """Query GraphRAG for dependency analysis"""
 
-    def __init__(self, root_dir="."):
+    def __init__(self, root_dir=".", git_slug: str = "", multi_repo: bool = False):
 
         self.root_dir = root_dir
 
+        self.git_slug = git_slug
+
+        self.multi_repo = multi_repo
+
+        self._setup_configuration()
+
         self._setup_search()
+
+        self._setup_prompts()
+
+    def _setup_configuration(self):
+        """Initialize instance configuration."""
 
     def _setup_search(self):
         """Initialize GraphRAG search"""
@@ -39,6 +49,47 @@ class DependencyAnalyzer:
         self.communities_df = communities_df
 
         self.community_reports_df = community_reports_df
+
+        self.community_level = (
+            int(community_reports_df["level"].max())
+            if not community_reports_df.empty and "level" in community_reports_df.columns
+            else 0
+        )
+
+
+
+    def _setup_prompts(self):
+        """Pre-load static prompt assets."""
+
+        from loaders.default_asset_loader import DefaultAssetLoader
+
+        loader = DefaultAssetLoader()
+
+        def _load(path):
+
+            try:
+
+                prompt, _ = loader.download_prompt(path)
+
+                return prompt
+
+            except Exception as e:
+
+                logging.warning(f"Could not preload prompt '{path}': {e}")
+
+                return ""
+
+        self.SYSTEM_PROMPT_DATA_EXTRACTION = _load(
+            "analysis/system-prompt/data-extraction")
+
+        self.SYSTEM_PROMPT_RHEL_ADMIN = _load(
+            "analysis/system-prompt/rhel-admin")
+
+        self.POST_AMBLE = _load(
+            "analysis/post-amble/json-format")
+
+        self.RHEL_8to10_CONTEXT = _load(
+            "analysis/additional-context/rhel8-to-10")
 
     def _find_dependencies(self, module_name):
         """Find all dependencies for a given module"""
@@ -192,58 +243,84 @@ class DependencyAnalyzer:
                              question: str,
                              retry_count: int = 3,
                              use_global: bool = True,
-                             include_context: bool = False):
+                             include_context: bool = False,
+                             bypass_index: bool = False):
         """
-        Use GraphRAG's LLM search to answer dependency questions
+        Use LLM to answer a question.
 
         Args:
             question (str): The question to ask
             retry_count (int, optional): Number of times to retry the query. Defaults to 3.
             use_global (bool, optional): Whether to use GraphRAG's global search.
             Defaults to True (recommended for many larger-scale code
-            comprehension tasks).
+            comprehension tasks). Ignored when bypass_index is True.
             include_context (bool, optional): If True, return (result, context_data) tuple
             instead of just the result string. Defaults to False.
+            bypass_index (bool, optional): If True, send the question directly to the
+            configured LLM without using the GraphRAG index. Defaults to False.
         """
-        from loaders.default_asset_loader import DefaultAssetLoader
-
-        loader = DefaultAssetLoader()
-
         num_tries_left = retry_count
 
         try:
 
             config = load_config(Path(self.root_dir))
 
-            system_prompt = loader.download_prompt("analysis/system-prompt/1")
+            if bypass_index:
 
-            if use_global:
+                logging.debug(f"Bypassing index for prompt={question}. Sending question directly to LLM...")
 
-                result, context_data = await api.global_search(
-                    config=config,
-                    entities=self.entity_df,
-                    communities=self.communities_df,
-                    community_reports=self.community_reports_df,
-                    community_level=2,
-                    response_type="Multiple Paragraphs",
-                    query=system_prompt + question,
-                    dynamic_community_selection=True,
+                from graphrag.language_model.manager import ModelManager
+
+                llm_config = config.models.get("default_chat_model")
+
+                if llm_config is None:
+                    raise KeyError("No model named 'default_chat_model' found in config.models")
+
+                chat_model = ModelManager().get_or_create_chat_model(
+                    name="default_chat_model",
+                    model_type=llm_config.type,
+                    config=llm_config,
                 )
+
+                response = await chat_model.achat(question)
+
+                result = response.output.content
+
+                logging.debug(f"Raw LLM response with bypass_index=True: {response.output.content}")
+
+                context_data = None
 
             else:
 
-                result, context_data = await api.global_search(
-                    config=config,
-                    entities=self.entity_df,
-                    communities=self.communities_df,
-                    community_reports=self.community_reports_df,
-                    text_units=self.text_unit_df,
-                    relationships=self.relationship_df,
-                    covariates=None,
-                    community_level=2,
-                    response_type="Multiple Paragraphs",
-                    query=system_prompt + question,
-                )
+                response_type = "Multiple Paragraphs"
+
+                if use_global:
+
+                    result, context_data = await api.global_search(
+                        config=config,
+                        entities=self.entity_df,
+                        communities=self.communities_df,
+                        community_reports=self.community_reports_df,
+                        community_level=self.community_level,
+                        response_type=response_type,
+                        query=question,
+                        dynamic_community_selection=False,
+                    )
+
+                else:
+
+                    result, context_data = await api.local_search(
+                        config=config,
+                        entities=self.entity_df,
+                        communities=self.communities_df,
+                        community_reports=self.community_reports_df,
+                        text_units=self.text_unit_df,
+                        relationships=self.relationship_df,
+                        covariates=None,
+                        community_level=self.community_level,
+                        response_type=response_type,
+                        query=question,
+                    )
 
         except Exception as e:
 
@@ -253,8 +330,11 @@ class DependencyAnalyzer:
 
                 logging.info(f"Retrying query ({num_tries_left} tries left): {e}")
 
-                return await self.query_with_llm(question, retry_count=num_tries_left,
-                                                 use_global=use_global, include_context=include_context)
+                return await self.query_with_llm(question,
+                                                 retry_count=num_tries_left,
+                                                 use_global=use_global,
+                                                 include_context=include_context,
+                                                 bypass_index=bypass_index)
 
             else:
 
@@ -264,6 +344,29 @@ class DependencyAnalyzer:
             return result, context_data
 
         return result
+
+    @staticmethod
+    def extract_context_content(context_data) -> str:
+        """Extracts and concatenates the full_content column from GraphRAG context_data.
+
+        Args:
+            context_data: The context_data dict returned by query_with_llm when
+                include_context=True. Current version expects a "reports"
+                key holding a DataFrame with a "full_content" column.
+
+        Returns:
+            A single string of all report full_content values joined by a separator,
+            or an empty string if context_data is missing or contains no reports.
+        """
+        if not isinstance(context_data, dict):
+            return ""
+
+        reports = context_data.get("reports", pd.DataFrame())
+
+        if reports.empty or "full_content" not in reports.columns:
+            return ""
+
+        return "\n\n---\n\n".join(reports["full_content"].dropna().astype(str).tolist())
 
     def raw_data(self):
         """Return the raw dataframes used for analysis"""
@@ -281,9 +384,11 @@ class DependencyAnalyzer:
 
         loader = DefaultAssetLoader()
 
-        system_prompt = loader.download_prompt("analysis/system-prompt/1")
+        graphrag_prompts = [f"analysis/migration-report/{i}" for i in range(loader.num_prompts("analysis/migration-report"))]
 
-        prompts = [f"analysis/migration-report/{i}" for i in range(1, loader.num_prompts("analysis/migration-report") + 1)]
+        enhanced_prompts = [f"analysis/migration-report/enhanced/{i}" for i in range(loader.num_prompts("analysis/migration-report/enhanced"))]
+
+        prompts = graphrag_prompts + enhanced_prompts
 
         answers = ["N/A"] * len(prompts)
 
@@ -291,29 +396,34 @@ class DependencyAnalyzer:
 
         for i, prompt_path in enumerate(prompts):
 
-            logging.info(f"Answers = {answers}")
+            logging.debug(f"answers = {answers}")
 
-            prompt = loader.download_prompt(
+            logging.info(f"Generating report for prompt {prompt_path}...")
+
+            prompt, meta = loader.download_prompt(
                 prompt_path,
-                system_prompt=system_prompt,
-                additional_context="",
+                system_prompt_data_extraction=self.SYSTEM_PROMPT_DATA_EXTRACTION,
+                system_prompt_rhel_admin=self.SYSTEM_PROMPT_RHEL_ADMIN,
+                additional_context=self.RHEL_8to10_CONTEXT,
                 answers=answers,
+                post_amble=self.POST_AMBLE,
             )
 
-            result = await self.query_with_llm(prompt)
+            bypass = prompt_path.startswith("analysis/migration-report/enhanced")
 
-            if result:
+            use_global = meta.get('search_mode') != 'local'
 
-                answers[i] = result
+            result = await self.query_with_llm(prompt, bypass_index=bypass, use_global=use_global)
 
-            question = loader.download_prompt(
-                prompt_path,
-                system_prompt="",
-                additional_context="",
-                answers=answers,
-            )
+            result = f"{meta.get('title')}\n\n{result}"
 
-            report += f"### Issue: {question}\n\n### Answer: {answers[i]}\n\n"
+            answers[i] = result
+
+            report += f"{result}\n\n"
+
+        from utils.visualization_utils import log_interactive_dependency_graph
+
+        log_interactive_dependency_graph(self)
 
         return report
     

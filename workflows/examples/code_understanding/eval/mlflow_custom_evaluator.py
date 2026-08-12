@@ -105,11 +105,11 @@ class MlFlowCustomEvaluator(CustomEvaluator):
         """
         try:
 
-            analyzer = DependencyAnalyzer(root_dir=graphrag_source_dir)
+            analyzer = DependencyAnalyzer(root_dir=graphrag_source_dir, git_slug=git_slug or "", multi_repo=multi_repo)
 
             actual_answer, context_data = asyncio.run(analyzer.query_with_llm(input, include_context=True))
 
-            context_str = str(context_data) if context_data is not None else ""
+            context_str = DependencyAnalyzer.extract_context_content(context_data)
 
             reference_answer = self._ground_truth_answer(input, graphrag_source_dir)
 
@@ -176,11 +176,6 @@ class MlFlowCustomEvaluator(CustomEvaluator):
     ):
         """Evaluates all rows in a CSV dataset in a single MLflow run.
 
-        Builds inputs from the question and one_shot_example columns, generates
-        reference answers via the ground truth LLM, then calls mlflow.evaluate()
-        once using a GraphRAG model callable. Per-row metric scores are mapped
-        back from results.tables["eval_results_table"].
-
         Args:
             graphrag_source_dir: Root directory of the GraphRAG index
                 (must contain output/*.parquet files).
@@ -202,9 +197,9 @@ class MlFlowCustomEvaluator(CustomEvaluator):
 
         df = pd.read_csv(eval_dataset_file)
 
-        analyzer = DependencyAnalyzer(root_dir=graphrag_source_dir)
+        analyzer = DependencyAnalyzer(root_dir=graphrag_source_dir, git_slug=git_slug or "", multi_repo=multi_repo)
 
-        df["inputs"] = df["question"].astype(str) + "\n" + df["one_shot_example"].astype(str)
+        df["inputs"] = df["question"].astype(str) + "\n\n**Example format:**\n" + df["one_shot_example"].astype(str)
 
         df["targets"] = df["inputs"].apply(
             lambda t: self._ground_truth_answer(t, graphrag_source_dir)
@@ -214,7 +209,9 @@ class MlFlowCustomEvaluator(CustomEvaluator):
 
             try:
 
-                answer, _ = asyncio.run(analyzer.query_with_llm(input_text, include_context=False))
+                answer, context_data = asyncio.run(analyzer.query_with_llm(input_text, include_context=True))
+
+                context_str = DependencyAnalyzer.extract_context_content(context_data)
 
             except Exception as e:
 
@@ -222,11 +219,17 @@ class MlFlowCustomEvaluator(CustomEvaluator):
 
                 answer = f"ERROR: {e}"
 
-            return answer
+                context_str = ""
 
-        df["predictions"] = df["inputs"].apply(_query)
+            return pd.Series({"predictions": answer, "context": context_str})
 
-        eval_data = df[["inputs", "targets", "predictions"]]
+        results = df["inputs"].apply(_query)
+
+        df["predictions"] = results["predictions"]
+
+        df["context"] = results["context"]
+
+        eval_data = df[["inputs", "targets", "predictions", "context"]]
 
         judge_model = self._judge_model_uri()
 
@@ -272,9 +275,14 @@ class MlFlowCustomEvaluator(CustomEvaluator):
 
         slug = git_slug or code_utils.generate_slug_from_repo(git_repo, git_branch)
 
-        artifact_path = (
-            f"results/evaluations/multi_repo/{slug}" if multi_repo
-            else f"results/evaluations/{slug}"
+        artifact_path = DefaultAssetLoader.get_log_results_artifact_path(
+
+            DefaultAssetLoader.RESULTS_PATH_PREFIX_EVAL,
+
+            git_slug=slug,
+
+            multi_repo=multi_repo,
+
         )
 
         df["git_slug"] = slug
