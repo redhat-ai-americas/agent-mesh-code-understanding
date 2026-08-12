@@ -1,4 +1,4 @@
-# AUGUR: Agentic Understanding for Guided Upgrade Recommendations
+# Agent Mesh for Software Engineering - Code Understanding
 
 Contents
 ---
