@@ -40,8 +40,14 @@ def build_repo_context(graphrag_source_dir: str = "") -> str:
             str(codebase_dir),
             max_file_size=50_000,
             exclude_patterns={"*.lock", "*.min.js", "*.min.css", "dist/*", "vendor/*",
-                              "node_modules/*", "*.egg-info/*", "*.pyc", "__pycache__/*"},
+                              "node_modules/*", "*.egg-info/*", "*.pyc", "__pycache__/*",
+                              "*_metadata.txt"},
         )
+        _MAX_CONTEXT_CHARS = 480_000  # ~120K tokens at 4 chars/token; leaves headroom for prompts
+        if len(content) > _MAX_CONTEXT_CHARS:
+            logging.warning("Codebase context truncated from %d to %d chars (~120K tokens).",
+                            len(content), _MAX_CONTEXT_CHARS)
+            content = content[:_MAX_CONTEXT_CHARS]
         return f"Source code of the codebase being analyzed:\n\n{content}"
 
     except Exception as e:

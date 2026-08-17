@@ -1,0 +1,6 @@
+---
+title: "### Integration Points"
+skip_prompt: "multi_repo"
+---
+What external systems does this codebase integrate with?
+For each integration point, identify the component that connects to it, the type of integration (database, API, message queue, infrastructure service), and the nature of the interaction.

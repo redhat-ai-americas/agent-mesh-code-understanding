@@ -2,18 +2,21 @@
 
 Contents
 ---
-- [ ] [Overview](#overview)
-- [ ] [Required Software / Tested with](#tested-with)
-- [ ] [Installing the Code Understanding Workflow](#installing-the-code-understanding-workflow)
-  - [ ] [Integrating the Models](#integrating-the-models)
-  - [ ] [Preparing the Environment](#preparing-the-environment)
-  - [ ] [(Optional) Building the Container Images](#optional-building-the-container-images)
-  - [ ] [Installing via Makefile](#installing-via-makefile)
-- [ ] [Running the Code Understanding Workflow](#running-the-code-understanding-workflow)
-- [ ] [More About the Code Understanding Workflow](#more-about-the-code-understanding-workflow)
-  - [ ] [1. Data Generation](#1-data-generation)
-  - [ ] [2. Data Indexing](#2-data-indexing)
-  - [ ] [3. Data Analysis](#3-data-analysis)
+
+- [Overview](#overview)
+- [Required Software / Tested with](#tested-with)
+- [Installing the Code Understanding Workflow](#installing-the-code-understanding-workflow)
+  - [Integrating the Models](#integrating-the-models)
+  - [Preparing the Environment](#preparing-the-environment)
+  - [(Optional) Building the Container Images](#optional-building-the-container-images)
+  - [Installing via Makefile](#installing-via-makefile)
+- [Running the Code Understanding Workflow](#running-the-code-understanding-workflow)
+- [Running Adhoc Queries](#running-adhoc-queries)
+- [Integrating with other tools](#integrating-with-other-tools)
+- [More About the Code Understanding Workflow](#more-about-the-code-understanding-workflow)
+  - [1. Data Generation](#1-data-generation)
+  - [2. Data Indexing](#2-data-indexing)
+  - [3. Data Analysis](#3-data-analysis)
 
 <a id="overview"></a>
 ## 🧭 Overview
@@ -39,6 +42,8 @@ Understanding** and **Code Migration**. This repository demonstrates the **Code 
 - OpenShift CLI (`oc`)
 - Helm CLI (`helm`)
 - Make (`make`)
+
+<a id="documentation"></a>
 
 ## Installing the Code Understanding Workflow
 
@@ -105,7 +110,7 @@ nohup python3 -m vllm.entrypoints.openai.api_server \
 
 ### Preparing the Environment
 
-1. Create an environment variables file `.env` using `.env-template` as a guide.
+1. Create an environment variables file `.env` using `.env.template` as a guide.
 
 ### (Optional) Building the Container Images
 1. To build the container images, run the following: `make build-images`
@@ -128,8 +133,7 @@ nohup python3 -m vllm.entrypoints.openai.api_server \
    ```make run-pipelines ARGS="--single-repo" PIPELINE_GIT_REPO=https://github.com/org/repo PIPELINE_GIT_BRANCH=main```
 
 2. To run the **Code Understanding** pipeline for multiple repositories:
-    - Update `assets/repos/repo_list.json` with the list of repositories to
-      be processed.
+    - Update `workflows/examples/code_understanding/assets/repos/repo_list.json` with the list of repositories to be processed.
     - Run the following command:
    ```make run-pipelines ARGS="--multi-repo"```
 
@@ -140,6 +144,15 @@ nohup python3 -m vllm.entrypoints.openai.api_server \
      - `wrappers/adhoc.sh "What migration order would be recommended when refactoring to reduce breaking changes?."`
      - `wrappers/adhoc.sh "Which modules or components would be riskiest to refactor first?" --git-repo https://github.com/org/repo` 
      - `wrappers/adhoc.sh "What are the data stores in this codebase?" --git-repo https://github.com/org/repo --git-branch develop`
+
+## Integrating with other tools
+
+External tools — such as vulnerability scanners, dependency analysers, 
+static code parsers, etc. — can contribute metadata to the data-generation 
+workflow by writing their output as JSON file(s) into a `.code_metadata` directory at the 
+root of the repository being analysed. Any files present there are automatically picked up and merged into the generated dataset before indexing. 
+Each JSON file must conform to the code metadata schema at [`workflows/examples/code_understanding/assets/schemas/code_metadata_schema.json`](workflows/examples/code_understanding/assets/schemas/code_metadata_schema.json); 
+fields not relevant to a given tool can be omitted.
 
 ## More About the Code Understanding Workflow
 
@@ -171,5 +184,8 @@ representation of the codebase that can be used for querying.
 The **Data Analysis** sub-workflow is used to query the generated GraphRAG index using the GraphRAG SDK.
 It includes both canned and adhoc queries that can be used to explore the 
 code and generate assets for the refactoring catalog, including a migration plan.
+
+
+
 
 

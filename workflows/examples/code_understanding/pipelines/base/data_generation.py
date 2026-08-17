@@ -29,9 +29,23 @@ def clone_from_repo(repo_url, destination_path, branch="master"):
         raise e
 
 
+def reset_environment(source_path: str, target_path: str):
+    """Removes the source and target directories."""
+    import shutil
+    import logging
+    import os
+
+    logging.basicConfig(level=os.environ.get('LOGLEVEL', 'INFO').upper())
+
+    logging.info("Resetting environment...")
+
+    shutil.rmtree(source_path, ignore_errors=True)
+
+    shutil.rmtree(target_path, ignore_errors=True)
+
+
 def prepare_environment(source_path: str, target_path: str, git_repo: str, git_branch: str):
     """Prepares the environment at the start of the pipeline."""
-    import shutil
     import logging
     import os
 
@@ -41,9 +55,7 @@ def prepare_environment(source_path: str, target_path: str, git_repo: str, git_b
 
     try:
 
-        shutil.rmtree(source_path, ignore_errors=True)
-
-        shutil.rmtree(target_path, ignore_errors=True)
+        reset_environment(source_path, target_path)
 
         clone_from_repo(git_repo, source_path, branch=git_branch)
 
@@ -156,10 +168,11 @@ def get_parsed_code_metadata(df, language, config=False):
             api_base=os.getenv("GRAPHRAG_LLM_API_BASE"),
             api_key=os.getenv("GRAPHRAG_LLM_TOKEN"),
             temperature=0,
+            best_of=1,
+            n=1,
             max_tokens=32_000,
             response_format={"type": "json_object"},
             top_k=1,
-            n=1
         )
 
         converted_dataset = flow.generate(dataset, max_concurrency=10)
@@ -179,7 +192,34 @@ def get_parsed_code_metadata(df, language, config=False):
         raise e
 
 
-def generate_code_comment(metadata: dict, file_path: str, config=False):
+def load_external_data(source_path: str) -> dict:
+    """Loads and merges all JSON files from source_path/.code_metadata/ into a single dict."""
+    import os, json
+    from utils import code_utils
+
+    code_metadata_dir = os.path.join(source_path, code_utils.CODE_METADATA_DIR)
+    result = {}
+
+    if not os.path.isdir(code_metadata_dir):
+        return result
+
+    for root, _, files in os.walk(code_metadata_dir):
+        for filename in files:
+            try:
+                with open(os.path.join(root, filename), "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                for key, value in data.items():
+                    if isinstance(value, list) and isinstance(result.get(key), list):
+                        result[key].extend(value)
+                    else:
+                        result[key] = value
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                pass
+
+    return result
+
+
+def generate_code_comment(metadata: dict, file_path: str, config=False, external_metadata: dict = None):
     """Builds a structured text comment from a code file's metadata dictionary."""
     import os
     from utils import code_utils
@@ -189,11 +229,25 @@ def generate_code_comment(metadata: dict, file_path: str, config=False):
 
     try:
 
+        external_metadata = external_metadata or {}
+
         lines = []
 
-        lines.append(f"This file is located at {metadata.get('file_path')} "
-                     f"from repository url {metadata.get('git_repo')}, "
-                     f"repository slug {metadata.get('git_slug')}")
+        header = (f"This file is located at {metadata.get('file_path')} "
+                  f"from repository url {metadata.get('git_repo')}, "
+                  f"repository slug {metadata.get('git_slug')}, "
+                  f"multi_repo {str(metadata.get('multi_repo', False)).lower()}")
+
+        runtime_stack = external_metadata.get('runtime_stack') or []
+        if runtime_stack:
+            runtime_parts = " / ".join(
+                f"{r.get('name', '')} {r.get('runtime_version', '')}".strip()
+                for r in runtime_stack if r.get('name')
+            )
+            if runtime_parts:
+                header += f", runtime {runtime_parts}"
+
+        lines.append(header)
 
         if metadata.get('package'):
             lines.append(f"\n Package: {metadata['package']}")
@@ -204,12 +258,23 @@ def generate_code_comment(metadata: dict, file_path: str, config=False):
         imports = metadata.get('imports') or []
         libraries = metadata.get('libraries') or []
 
-        if imports or libraries:
+        package = metadata.get('package')
+        external_libraries = []
+        if package:
+            for pkg_entry in external_metadata.get('repo_packages', []):
+                if pkg_entry.get('package') == package:
+                    external_libraries.extend(pkg_entry.get('libraries', []))
+
+        if imports or libraries or external_libraries:
             lines.append(f"\nDependencies:")
             lines.extend(f"- [import] {imp}" for imp in imports)
             lines.extend(
                 f"- [library] {lib.get('library_name', '')} {lib.get('library_version', '')}".strip()
                 for lib in libraries
+            )
+            lines.extend(
+                f"- [library] {lib.get('library_name', '')} {lib.get('library_version', '')}".strip()
+                for lib in external_libraries
             )
 
         if metadata.get('classes'):
@@ -242,11 +307,33 @@ def generate_code_comment(metadata: dict, file_path: str, config=False):
         raise e
 
 
-def save_code_and_metadata_files(df, target_path, config=False):
+def save_metadata_file(metadata: dict, target_path: str, relative_file_path: str,
+                       git_repo: str, git_slug: str, language: str, schema: dict = None):
+    """Writes a flattened metadata YAML file for a single source file to target_path."""
+    import os
+    from pathlib import Path
+    from utils import json_utils
+    from loaders.default_asset_loader import DefaultAssetLoader
+
+    if schema is None:
+        schema = DefaultAssetLoader().download("schemas/code_metadata_schema.json")
+
+    metadata_file_path = os.path.join(
+        target_path, str(Path(relative_file_path).with_suffix("")) + "_metadata.txt"
+    )
+
+    os.makedirs(os.path.dirname(metadata_file_path), exist_ok=True)
+
+    with open(metadata_file_path, "w", encoding="utf-8") as f:
+        f.write(json_utils.flatten_code_metadata(metadata, schema))
+
+
+def save_code_and_metadata_files(df, target_path, git_repo: str, git_slug: str, language: str, config=False,
+                                 external_metadata: dict = None):
     """Writes annotated code and flattened metadata files to target_path."""
     import os
     from pathlib import Path
-    import logging, json
+    import logging
     from utils import json_utils
     from loaders.default_asset_loader import DefaultAssetLoader
 
@@ -256,9 +343,11 @@ def save_code_and_metadata_files(df, target_path, config=False):
 
         logging.info("Saving code and metadata files...")
 
-        _SCHEMA = DefaultAssetLoader().download("schemas/code_metadata_schema.json")
+        schema = DefaultAssetLoader().download("schemas/code_metadata_schema.json")
 
         for _, row in df.iterrows():
+
+            logging.debug(f"**Processing file {row['file_path']}...**")
 
             code = row["code"]
 
@@ -270,25 +359,30 @@ def save_code_and_metadata_files(df, target_path, config=False):
 
             rel_file_path = row["file_path"]
 
+            if not metadata.get('language'):
+                metadata['language'] = language
+            if not metadata.get('file_path'):
+                metadata['file_path'] = rel_file_path
+            if not metadata.get('git_repo'):
+                metadata['git_repo'] = git_repo
+            if not metadata.get('git_slug'):
+                metadata['git_slug'] = git_slug
+
             target_file_path = os.path.join(target_path, Path(rel_file_path).with_suffix(".txt"))
 
-            metadata_file_path = os.path.join(
-                target_path, str(Path(rel_file_path).with_suffix("")) + "_metadata.txt"
-            )
-
             code_header_comment = generate_code_comment(
-                metadata=metadata, file_path=rel_file_path, config=config
+                metadata=metadata, file_path=rel_file_path, config=config,
+                external_metadata=external_metadata,
             ) or ""
 
             os.makedirs(os.path.dirname(target_file_path), exist_ok=True)
 
-            os.makedirs(os.path.dirname(metadata_file_path), exist_ok=True)
-
             with open(target_file_path, "w", encoding="utf-8") as f:
                 f.write(f"{code_header_comment}\n{code}")
 
-            with open(metadata_file_path, "w", encoding="utf-8") as f:
-                f.write(json_utils.flatten_code_metadata(metadata, _SCHEMA))
+            save_metadata_file(metadata, target_path, rel_file_path,
+                               git_repo=git_repo, git_slug=git_slug, language=language,
+                               schema=schema)
 
     except Exception as e:
 
@@ -299,7 +393,7 @@ def save_code_and_metadata_files(df, target_path, config=False):
 
 def generate_code_and_meta(git_repo: str, git_branch: str, language: str,
                             source_path: str, target_path: str, config: bool = False,
-                            multi_repo: bool = False):
+                            multi_repo: bool = False, external_metadata: dict = None):
     """Generates and saves code metadata for one language/config combination."""
     import json, logging, traceback
     from loaders.default_asset_loader import DefaultAssetLoader
@@ -328,7 +422,9 @@ def generate_code_and_meta(git_repo: str, git_branch: str, language: str,
 
         code_and_metadata_df = get_parsed_code_metadata(code_df, language=language, config=config)
 
-        save_code_and_metadata_files(code_and_metadata_df, target_path, config=config)
+        save_code_and_metadata_files(code_and_metadata_df, target_path, git_repo=git_repo,
+                                     git_slug=git_slug, language=language, config=config,
+                                     external_metadata=external_metadata)
 
         logging.info(f"Successfully generated code metadata for '{git_repo}'.")
 
@@ -406,81 +502,101 @@ def detect_languages(source_path: str) -> list:
     return languages
 
 
-def run_full_pipeline(git_repo: str, git_branch: str, source_path: str, target_path: str,
-                      multi_repo: bool = False):
-    """Prepares the environment, generates code metadata for all detected languages, and returns a status dict."""
-    import traceback, logging
-    import os
+##############################################################################
+# Pipeline stage
+##############################################################################
 
-    logging.basicConfig(level=os.environ.get('LOGLEVEL', 'INFO').upper())
+class DataGenerationPipeline:
 
-    git_slug = generate_git_slug(git_repo, git_branch)
+    def run(self, git_repo: str, git_branch: str, source_path: str, target_path: str,
+            multi_repo: bool = False):
+        """Prepares the environment, generates code metadata for all detected languages, and returns a status dict."""
+        import traceback, logging
+        import os
 
-    try:
+        logging.basicConfig(level=os.environ.get('LOGLEVEL', 'INFO').upper())
 
-        prepare_environment(source_path=source_path, target_path=target_path,
-                            git_repo=git_repo, git_branch=git_branch)
+        git_slug = generate_git_slug(git_repo, git_branch)
 
-        for language in detect_languages(source_path):
+        try:
 
-            for config in [False, True]:
+            prepare_environment(source_path=source_path, target_path=target_path,
+                                git_repo=git_repo, git_branch=git_branch)
 
-                generate_code_and_meta(
-                    git_repo=git_repo, git_branch=git_branch,
-                    language=language, source_path=source_path, target_path=target_path,
-                    config=config, multi_repo=multi_repo,
-                )
+            languages = detect_languages(source_path)
 
-        logging.info("Data generation pipeline complete.")
+            external_metadata = load_external_data(source_path)
 
-        result = {"git_slug": git_slug, "status": "complete", "fail_message": ""}
+            for language in languages:
 
-    except Exception as e:
+                for config in [False, True]:
 
-        logging.error("PIPELINE FAILED!")
+                    generate_code_and_meta(
+                        git_repo=git_repo, git_branch=git_branch,
+                        language=language, source_path=source_path, target_path=target_path,
+                        config=config, multi_repo=multi_repo, external_metadata=external_metadata,
+                    )
 
-        error_message = traceback.format_exc()
+            logging.info("Data generation pipeline complete.")
 
-        logging.error(error_message)
+            result = {"git_slug": git_slug, "status": "complete", "fail_message": ""}
 
-        result = {"git_slug": git_slug, "status": "error", "fail_message": error_message}
+        except Exception as e:
 
-    return result
+            logging.error("PIPELINE FAILED!")
+
+            error_message = traceback.format_exc()
+
+            logging.error(error_message)
+
+            reset_environment(source_path, target_path)
+
+            result = {"git_slug": git_slug, "status": "error", "fail_message": error_message}
+
+        return result
+
+    def run_multi_repo(self, git_repos: list):
+        """Runs run for each repository in git_repos and returns a list of status dicts."""
+        import logging
+        from utils import code_utils
+        import os
+
+        logging.basicConfig(level=os.environ.get('LOGLEVEL', 'INFO').upper())
+
+        parent_source_path = os.getenv("PARENT_SOURCE_PATH", "source")
+        parent_target_path = os.getenv("PARENT_TARGET_PATH", "target")
+
+        pipeline_results = []
+
+        for git_data in git_repos:
+
+            git_repo = git_data["git_repo"]
+
+            git_branch = git_data["git_branch"]
+
+            repo_slug = code_utils.generate_slug_from_repo(git_repo, git_branch)
+
+            source_path = f"{parent_source_path}/{repo_slug}"
+
+            target_path = f"{parent_target_path}/{repo_slug}"
+
+            logging.info(f"Generating data for git repo={git_repo}, branch={git_branch}, slug={repo_slug}...")
+
+            result = self.run(git_repo=git_repo, git_branch=git_branch,
+                              source_path=source_path, target_path=target_path,
+                              multi_repo=True)
+
+            pipeline_results.append(result)
+
+        return pipeline_results
 
 
-def run_full_pipeline_multi_repo(git_repos: list):
-    """Runs run_full_pipeline for each repository in git_repos and returns a list of status dicts."""
-    import logging
-    from utils import code_utils
-    import os
+##############################################################################
+# Module-level aliases for external callers (notebooks)
+##############################################################################
 
-    logging.basicConfig(level=os.environ.get('LOGLEVEL', 'INFO').upper())
+def run_full_pipeline(*args, **kwargs):
+    return DataGenerationPipeline().run(*args, **kwargs)
 
-    parent_source_path = os.getenv("PARENT_SOURCE_PATH", "source")
-    parent_target_path = os.getenv("PARENT_TARGET_PATH", "target")
-
-    pipeline_results = []
-
-    for git_data in git_repos:
-
-        git_repo = git_data["git_repo"]
-
-        git_branch = git_data["git_branch"]
-
-        repo_slug = code_utils.generate_slug_from_repo(git_repo, git_branch)
-
-        source_path = f"{parent_source_path}/{repo_slug}"
-
-        target_path = f"{parent_target_path}/{repo_slug}"
-
-        logging.info(f"Generating data for git repo={git_repo}, branch={git_branch}, slug={repo_slug}...")
-
-        result = run_full_pipeline(git_repo=git_repo, git_branch=git_branch,
-                                   source_path=source_path, target_path=target_path,
-                                   multi_repo=True)
-
-        pipeline_results.append(result)
-
-    return pipeline_results
-
-
+def run_full_pipeline_multi_repo(*args, **kwargs):
+    return DataGenerationPipeline().run_multi_repo(*args, **kwargs)
