@@ -42,6 +42,8 @@ spec:
             - name: GIT_BRANCH
               value: "{{ .Values.adhocQuery.gitBranch }}"
             {{- end }}
+            - name: GRAPHRAG_LOCAL_QUERY_SKIP_TLS_VERIFY
+              value: "true"
           envFrom:
             - secretRef:
                 name: code-understanding-env

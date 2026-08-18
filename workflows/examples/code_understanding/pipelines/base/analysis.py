@@ -85,7 +85,6 @@ class AnalysisPipeline:
         from datetime import datetime
         from loaders.default_asset_loader import DefaultAssetLoader
         from utils.graphrag_utils import DependencyAnalyzer
-        from utils.loader_utils import download_result_directory
         from pipelines.base.data_generation import generate_git_slug
         import os
 
@@ -95,29 +94,34 @@ class AnalysisPipeline:
 
         graphrag_source_path = "graph_rag_app/source"
 
+        adhoc_results_header = "\n---\n\n# ##################ADHOC RESULTS##################\n"
+
         try:
-            download_result_directory(
-                git_slug=git_slug,
+            DependencyAnalyzer.download_graphrag_directory(
                 download_dir=graphrag_source_path,
-                results_prefix=DefaultAssetLoader.RESULTS_PATH_PREFIX_REPO_DATASETS,
+                git_slug=git_slug,
                 multi_repo=multi_repo,
-                asset_tags={"git_slug": git_slug, "multi_repo": multi_repo, "category": "indexing"},
+                git_repo=git_repo,
             )
-        except Exception as e:
-            import traceback
+        except Exception:
             msg = (
                 "Could not perform query: "
-                + ("no multi-repository index was found" if multi_repo else f"no index was found for git_repo='{git_repo}'")
+                + ("no multi-repository index was found" if multi_repo else
+                   f"no index was found (git_repo='{git_repo}')")
                 + ". Maybe you need to generate it first?"
             )
             logging.error(msg)
-            print(msg, flush=True)
-            logging.debug(traceback.format_exc())
-            return ""
+            print(adhoc_results_header, flush=True)
+            return msg
 
         analyzer = DependencyAnalyzer(graphrag_source_path, git_slug=git_slug, multi_repo=multi_repo)
 
-        result = asyncio.run(analyzer.query_with_llm(question, retry_count=retry_count, use_global=use_global))
+        result = asyncio.run(analyzer.query_with_llm(
+            question,
+            retry_count=retry_count,
+            use_global=use_global,
+            response_type="Multiple Paragraphs, plain text, no markdown formatting",
+        ))
 
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
 
@@ -150,7 +154,8 @@ class AnalysisPipeline:
 
         )
 
-        return result
+        print(adhoc_results_header, flush=True)
+        return f"{result}\n\n"
 
 
 ##############################################################################
