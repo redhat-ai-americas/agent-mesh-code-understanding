@@ -26,7 +26,7 @@ class AnalysisPipeline:
 
         report = asyncio.run(analyzer.generate_migration_report())
 
-        result_file = f"migration_report_{git_slug}.txt" if git_slug else "migration_report.txt"
+        result_file = f"migration_report_{git_slug}.md" if git_slug else "migration_report.md"
 
         DefaultAssetLoader().log_results(
 
@@ -119,6 +119,10 @@ class AnalysisPipeline:
         analyzer = DependencyAnalyzer(graphrag_source_path, git_slug=git_slug, multi_repo=use_multi_repo)
 
         postamble = "Provide as much detail as possible. Include the git repo url(s) in the report."
+
+        if use_multi_repo:
+            postamble += (" Include ALL the git repo urls that you can find."
+                          " Group git repositories by their git repo url.")
 
         result = asyncio.run(analyzer.query_with_llm(
             question + postamble,
