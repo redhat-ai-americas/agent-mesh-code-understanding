@@ -57,7 +57,7 @@ def graphrag_evaluation_op(graphrag_dir: Input[Dataset],
 
     with read_from_input_artifact(graphrag_dir) as tmp_graphrag:
 
-        evaluate_graphrag_index(
+        results = evaluate_graphrag_index(
             graphrag_source_path=tmp_graphrag,
             git_repo=git_repo,
             git_branch=git_branch,
@@ -106,6 +106,8 @@ def _run_pipeline(
     multi_repo: bool = False,
 ) -> Dataset:
 
+    import pandas as pd
+
     task = graphrag_indexing_op(
         codebase_dir=codebase_dir,
         git_repo=git_repo,
@@ -121,11 +123,11 @@ def _run_pipeline(
 
     with dsl.ParallelFor(items=repo_list_task.output) as repo:
 
-        graphrag_evaluation_op(
+        eval_results = graphrag_evaluation_op(
             graphrag_dir=task.outputs["graphrag_dir"],
             git_repo=repo.git_repo,
             git_branch=repo.git_branch,
-            multi_repo=multi_repo,
+            multi_repo=multi_repo
         )
 
     return task.outputs["graphrag_dir"]
