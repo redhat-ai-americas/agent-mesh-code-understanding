@@ -282,7 +282,9 @@ class MlFlowCustomEvaluator(CustomEvaluator):
 
         df["answer"] = df["predictions"]
 
-        df["reference_answer"] = df["targets"]
+        df = df.rename(columns={"targets": "reference"})
+
+        df = df.drop(columns=["inputs", "predictions", "reference_answer"], errors="ignore")
 
         slug = git_slug or code_utils.generate_slug_from_repo(git_repo, git_branch)
 
