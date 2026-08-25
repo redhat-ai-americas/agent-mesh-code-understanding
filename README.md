@@ -10,6 +10,7 @@ Contents
   - [Preparing the Environment](#preparing-the-environment)
   - [(Optional) Building the Container Images](#optional-building-the-container-images)
   - [Installing via Makefile](#installing-via-makefile)
+- [Code Understanding Console (Streamlit)](#code-understanding-console-streamlit)
 - [Running the Code Understanding Workflow](#running-the-code-understanding-workflow)
 - [Running Adhoc Queries](#running-adhoc-queries)
 - [Integrating with other tools](#integrating-with-other-tools)
@@ -117,6 +118,31 @@ nohup python3 -m vllm.entrypoints.openai.api_server \
 
 ### Installing via Makefile
 1. Run the Makefile: `make install`
+
+## Code Understanding Console (Streamlit)
+
+Deploy the Streamlit GUI on OpenShift:
+
+```
+make deploy-console
+# https://code-understanding-console-<namespace>.apps.<cluster-domain>
+```
+
+Run locally (requires `.env` and cluster credentials for pipeline/chat features):
+
+```
+make run-console
+# or: ./wrappers/console.sh
+```
+
+Or port-forward the cluster deployment:
+
+```
+make port-forward-console
+# http://localhost:8501
+```
+
+The console is also included when you run `make install` (`console.enabled=true`).
 
 ## Running the Code Understanding Workflow
 1. To run the **Code Understanding** pipeline for a single repository, run:

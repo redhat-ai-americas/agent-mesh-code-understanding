@@ -1,0 +1,127 @@
+{{- if .Values.console.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: code-understanding-console
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: code-understanding-console
+spec:
+  replicas: {{ .Values.console.replicas }}
+  selector:
+    matchLabels:
+      app: code-understanding-console
+  template:
+    metadata:
+      labels:
+        app: code-understanding-console
+    spec:
+      serviceAccountName: pipeline-upload-job
+      containers:
+        - name: console
+          image: "{{ .Values.console.image }}"
+          imagePullPolicy: IfNotPresent
+          workingDir: /opt/app-root/src
+          ports:
+            - name: http
+              containerPort: 8501
+          command:
+            - sh
+            - -c
+            - |
+              pip install --quiet -r ui/requirements.txt
+              echo ""
+              echo "Console is exposed on the OpenShift Route (not the URLs Streamlit prints below)."
+              echo "Run: oc get route code-understanding-console -n ${KFP_NAMESPACE} -o jsonpath='https://{.spec.host}{\"\\n\"}'"
+              echo ""
+              streamlit run ui/app.py \
+                --server.port=8501 \
+                --server.address=0.0.0.0 \
+                --server.headless=true \
+                --server.enableCORS=false \
+                --server.enableWebsocketCompression=false \
+                --browser.gatherUsageStats=false
+          env:
+            - name: KFP_NAMESPACE
+              value: "{{ .Values.namespace }}"
+            - name: KFP_HOST
+              value: "https://ds-pipeline-dspa.{{ .Values.namespace }}.svc.cluster.local:8443"
+            - name: AGENTMESH_REPO_URL
+              value: "{{ .Values.repoUrl }}"
+            - name: AGENTMESH_REPO_REF
+              value: "{{ .Values.repoRef }}"
+            - name: AGENTMESH_JOB_REPO_REF
+              value: "main"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          envFrom:
+            - secretRef:
+                name: code-understanding-env
+                optional: true
+          volumeMounts:
+            - name: ui
+              mountPath: /opt/app-root/src/ui
+            - name: ui
+              mountPath: /opt/app-root/src/.streamlit/config.toml
+              subPath: config.toml
+          readinessProbe:
+            httpGet:
+              path: /_stcore/health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /_stcore/health
+              port: http
+            initialDelaySeconds: 90
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: ui
+          configMap:
+            name: code-understanding-console-ui
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: code-understanding-console
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: code-understanding-console
+spec:
+  selector:
+    app: code-understanding-console
+  ports:
+    - name: http
+      port: 8501
+      targetPort: http
+---
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: code-understanding-console
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: code-understanding-console
+  annotations:
+    haproxy.router.openshift.io/timeout: 30m
+spec:
+  to:
+    kind: Service
+    name: code-understanding-console
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+{{- end }}

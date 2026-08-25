@@ -48,7 +48,7 @@ spec:
       annotations:
         opendatahub.io/notebook-python-dependencies: '[]'
         opendatahub.io/notebook-software: '[]'
-        opendatahub.io/imported-from: {{ .Values.dataGeneration.image.registry}}/{{ .Values.dataGeneration.image.name}}:{{ .Values.dataGeneration.image.tag}}
+        opendatahub.io/imported-from: "{{ .Values.dataGeneration.image.registry}}/{{ .Values.dataGeneration.image.name}}:{{ .Values.dataGeneration.image.tag}}"
       from:
         kind: DockerImage
         name: '{{ .Values.dataGeneration.image.registry}}/{{ .Values.dataGeneration.image.name}}:{{ .Values.dataGeneration.image.tag}}'
@@ -78,7 +78,7 @@ spec:
       annotations:
         opendatahub.io/notebook-python-dependencies: '[]'
         opendatahub.io/notebook-software: '[]'
-        opendatahub.io/imported-from: {{ .Values.graphrag.image.registry}}/{{ .Values.graphrag.image.name}}:{{ .Values.graphrag.image.tag}}
+        opendatahub.io/imported-from: "{{ .Values.graphrag.image.registry}}/{{ .Values.graphrag.image.name}}:{{ .Values.graphrag.image.tag}}"
       from:
         kind: DockerImage
         name: '{{ .Values.graphrag.image.registry}}/{{ .Values.graphrag.image.name}}:{{ .Values.graphrag.image.tag}}'
@@ -108,7 +108,7 @@ spec:
       annotations:
         opendatahub.io/notebook-python-dependencies: '[]'
         opendatahub.io/notebook-software: '[]'
-        opendatahub.io/imported-from: {{ .Values.analysis.image.registry}}/{{ .Values.analysis.image.name}}:{{ .Values.analysis.image.tag}}
+        opendatahub.io/imported-from: "{{ .Values.analysis.image.registry}}/{{ .Values.analysis.image.name}}:{{ .Values.analysis.image.tag}}"
       from:
         kind: DockerImage
         name: '{{ .Values.analysis.image.registry}}/{{ .Values.analysis.image.name}}:{{ .Values.analysis.image.tag}}'

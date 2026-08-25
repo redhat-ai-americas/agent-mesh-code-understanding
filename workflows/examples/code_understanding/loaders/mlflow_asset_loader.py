@@ -57,7 +57,11 @@ class MlFlowAssetLoader(AssetLoader):
 
         else:
 
-            filter_string = " AND ".join([f"tags.\"{k}\" = '{v}'" for k, v in (tags or {}).items() if v])
+            filter_string = " AND ".join(
+                f'tags."{k}" = \'{str(v)}\''
+                for k, v in (tags or {}).items()
+                if v is not None and v != ""
+            )
 
         logging.debug(f"Filter string: {filter_string}")
 
