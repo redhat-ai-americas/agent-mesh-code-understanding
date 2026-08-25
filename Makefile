@@ -216,3 +216,62 @@ run-pipelines:
 	\
 	echo "==> Streaming pipeline run results..." && \
 	oc logs -f job/run-pipelines -n $$KFP_NAMESPACE
+
+PLUGIN_IMAGE ?= code-understanding-console-plugin:latest
+
+build-console-plugin:
+	@echo "==> Installing and building OpenShift console plugin..." && \
+	cd console-plugin && npm install --no-audit --no-fund && npm run build
+
+build-console-plugin-image: build-console-plugin
+	@set -a && . $(ENV_FILE) && set +a && \
+	REGISTRY_HOST="$$(oc registry info 2>/dev/null || true)" && \
+	PLUGIN_IMAGE="image-registry.openshift-image-registry.svc:5000/$$KFP_NAMESPACE/code-understanding-console-plugin:latest" && \
+	CONTAINER_CMD="$$(command -v docker 2>/dev/null)" && \
+	if [ -n "$$CONTAINER_CMD" ] && $$CONTAINER_CMD info >/dev/null 2>&1; then \
+	  if [ -z "$$REGISTRY_HOST" ]; then echo "ERROR: oc registry login required."; exit 1; fi && \
+	  PLUGIN_IMAGE="$$REGISTRY_HOST/$$KFP_NAMESPACE/code-understanding-console-plugin:latest" && \
+	  echo "==> Building plugin image locally: $$PLUGIN_IMAGE" && \
+	  cd console-plugin && $$CONTAINER_CMD build --platform linux/amd64 -t "$$PLUGIN_IMAGE" . && \
+	  $$CONTAINER_CMD push "$$PLUGIN_IMAGE"; \
+	else \
+	  echo "==> Building plugin image on-cluster (no local container runtime)..." && \
+	  helm template agent-mesh-for-sw resources/helm \
+	    --set namespace="$$KFP_NAMESPACE" \
+	    --set consolePlugin.enabled=true \
+	    -s templates/console-plugin-build.yaml | oc apply -n $$KFP_NAMESPACE -f - && \
+	  oc start-build code-understanding-console-plugin --from-dir=console-plugin --follow -n $$KFP_NAMESPACE; \
+	fi && \
+	echo "$$PLUGIN_IMAGE" > console-plugin/.plugin-image.ref
+
+deploy-console-plugin: build-console-plugin-image
+	@set -a && . $(ENV_FILE) && set +a && \
+	STREAMLIT_HOST="$$(oc get route code-understanding-console -n $$KFP_NAMESPACE -o jsonpath='{.spec.host}')" && \
+	CONSOLE_HOST="$$(oc get route console -n openshift-console -o jsonpath='{.spec.host}')" && \
+	echo "==> Deploying OpenShift console plugin..." && \
+	helm template agent-mesh-for-sw resources/helm \
+		--set namespace="$$KFP_NAMESPACE" \
+		--set consolePlugin.enabled=true \
+		--set consolePlugin.streamlitRouteHost="$$STREAMLIT_HOST" \
+		--set consolePlugin.consoleBaseUrl="https://$$CONSOLE_HOST" \
+		-s templates/console-plugin.yaml | oc apply -f - && \
+	oc rollout status deployment/code-understanding-console-plugin -n $$KFP_NAMESPACE --timeout=300s && \
+	$(MAKE) enable-console-plugin
+
+enable-console-plugin:
+	@set -a && . $(ENV_FILE) && set +a && \
+	echo "==> Enabling code-understanding-console in OpenShift console..." && \
+	EXISTING="$$(oc get consoles.operator.openshift.io cluster -o jsonpath='{.spec.plugins}' 2>/dev/null)" && \
+	if echo "$$EXISTING" | grep -q 'code-understanding-console'; then \
+	  echo "Plugin already enabled."; \
+	else \
+	  oc patch consoles.operator.openshift.io cluster --type=json \
+	    -p='[{"op":"add","path":"/spec/plugins/-","value":"code-understanding-console"}]' && \
+	  echo "Plugin enabled. Console may take 1-2 minutes to reload."; \
+	fi && \
+	CONSOLE_HOST="$$(oc get route console -n openshift-console -o jsonpath='{.spec.host}')" && \
+	echo "" && \
+	echo "==> Open in OpenShift console:" && \
+	echo "    https://$$CONSOLE_HOST/code-understanding" && \
+	echo "    Application launcher: Code Understanding" && \
+	echo ""

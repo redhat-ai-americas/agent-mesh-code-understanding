@@ -1,0 +1,30 @@
+{{- if .Values.consolePlugin.enabled }}
+---
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: code-understanding-console-plugin
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: code-understanding-console-plugin
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: code-understanding-console-plugin
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: code-understanding-console-plugin
+spec:
+  output:
+    to:
+      kind: ImageStreamTag
+      name: code-understanding-console-plugin:latest
+  source:
+    type: Binary
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  triggers: []
+{{- end }}
