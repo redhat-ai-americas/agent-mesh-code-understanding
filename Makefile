@@ -17,7 +17,6 @@ install:
 	until oc get configmap odh-trusted-ca-bundle -n $$KFP_NAMESPACE \
 		-o jsonpath='{.data.ca-bundle\.crt}' 2>/dev/null | grep -q CERTIFICATE; do sleep 5; done && \
 	\
-	$(MAKE) apply-console-src && \
 	echo "==> Running helm upgrade..." && \
 	helm upgrade --install agent-mesh-for-sw resources/helm \
 		--no-hooks \
@@ -38,7 +37,7 @@ install:
 		--set analysis.image.name="$$KFP_ANALYSIS_BASE_IMAGE_NAME" \
 		--set analysis.image.tag="$$KFP_ANALYSIS_BASE_IMAGE_TAG" \
 		--set clusterDomain="$(CLUSTER_DOMAIN)" \
-		--set console.enabled=true
+		--set console.enabled=false
 	$(MAKE) apply-secrets
 	@set -a && . $(ENV_FILE) && set +a && \
 	if [ "$$ASSET_LOADER" = "mlflow" ]; then \
@@ -47,6 +46,7 @@ install:
 	fi
 	$(MAKE) upload-pipelines
 	$(MAKE) deploy-notebooks
+	$(MAKE) deploy-console
 
 deploy-notebooks:
 	@set -a && . $(ENV_FILE) && set +a && \
@@ -221,16 +221,6 @@ run-pipelines:
 
 apply-console-src:
 	@set -a && . $(ENV_FILE) && set +a && \
-	echo "==> Publishing console UI ConfigMap..." && \
-	oc create configmap code-understanding-console-ui \
-		--from-file=app.py=ui/app.py \
-		--from-file=cluster.py=ui/cluster.py \
-		--from-file=catalog.py=ui/catalog.py \
-		--from-file=indexes.py=ui/indexes.py \
-		--from-file=requirements.txt=ui/requirements.txt \
-		--from-file=config.toml=ui/.streamlit/config.toml \
-		--from-file=repo_list.json=workflows/examples/code_understanding/assets/repos/repo_list.json \
-		-n $$KFP_NAMESPACE --dry-run=client -o yaml | oc apply -f - && \
 	echo "==> Publishing job scripts ConfigMap..." && \
 	oc create configmap code-understanding-job-scripts \
 		--from-file=run_pipelines.sh=workflows/examples/code_understanding/scripts/run_pipelines.sh \
@@ -238,15 +228,23 @@ apply-console-src:
 		--from-file=default_asset_loader.py=workflows/examples/code_understanding/loaders/default_asset_loader.py \
 		-n $$KFP_NAMESPACE --dry-run=client -o yaml | oc apply -f -
 
+build-console-image:
+	@set -a && . $(ENV_FILE) && set +a && \
+	echo "==> Building Code Understanding console image on-cluster..." && \
+	helm template agent-mesh-for-sw resources/helm \
+	  --set namespace="$$KFP_NAMESPACE" \
+	  --set console.enabled=true \
+	  -s templates/console-build.yaml | oc apply -n $$KFP_NAMESPACE -f - && \
+	oc start-build code-understanding-console --from-dir=ui --follow -n $$KFP_NAMESPACE
+
 run-console:
 	@set -a && . $(ENV_FILE) && set +a && \
 	AGENTMESH_REPO_URL="$(GIT_REPO_URL)" AGENTMESH_REPO_REF="$(GIT_REPO_BRANCH)" \
 	KFP_NAMESPACE="$$KFP_NAMESPACE" \
 	python3 -m pip install --quiet -r ui/requirements.txt && \
-	python3 -m streamlit run ui/app.py --server.headless true
+	python3 -m uvicorn --app-dir ui main:app --host 127.0.0.1 --port 8080
 
-deploy-console:
-	@$(MAKE) apply-console-src
+deploy-console: apply-console-src build-console-image
 	@set -a && . $(ENV_FILE) && set +a && \
 	echo "==> Deploying Code Understanding console..." && \
 	helm template agent-mesh-for-sw resources/helm \
@@ -263,11 +261,11 @@ deploy-console:
 	echo "==> Open the console in your browser:" && \
 	echo "    https://$$ROUTE_HOST" && \
 	echo "" && \
-	echo "    (Ignore localhost/pod IPs in 'oc logs' — those are inside the cluster only.)" && \
-	echo "    Or run: make port-forward-console  then open http://localhost:8501" && \
+	echo "    Namespace access is enough; this is a Kubernetes Deployment, not an OpenShift console plugin." && \
+	echo "    Or run: make port-forward-console  then open http://localhost:8080" && \
 	echo ""
 
 port-forward-console:
 	@set -a && . $(ENV_FILE) && set +a && \
-	echo "==> Forwarding http://localhost:8501 -> code-understanding-console:8501" && \
-	oc port-forward svc/code-understanding-console 8501:8501 -n $$KFP_NAMESPACE
+	echo "==> Forwarding http://localhost:8080 -> code-understanding-console:8080" && \
+	oc port-forward svc/code-understanding-console 8080:8080 -n $$KFP_NAMESPACE

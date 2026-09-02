@@ -583,7 +583,7 @@ def _improve_markdown(text: str) -> str:
 
 
 def format_chat_answer(text: str) -> str:
-    """Normalize adhoc query text for readable Streamlit markdown."""
+    """Normalize adhoc query text for readable markdown in the console."""
     import ast
     import re
 
@@ -724,3 +724,34 @@ def extract_adhoc_answer(logs: str | bytes | None) -> str:
         "The query job finished but no answer was found in the logs. "
         "Try again in a moment, or check the job logs in the sidebar."
     )
+
+
+def job_snapshot(job_name: str) -> dict[str, Any]:
+    """Return status, logs, and extracted answer for a console job."""
+    batch, core, ns = k8s_clients()
+    job = batch.read_namespaced_job(job_name, ns)
+    succeeded = bool(job.status.succeeded)
+    failed = bool(job.status.failed)
+    active = bool(job.status.active)
+    if succeeded:
+        phase = "Succeeded"
+    elif failed:
+        phase = "Failed"
+    elif active:
+        phase = "Running"
+    else:
+        phase = "Pending"
+    pod = job_pod_name(core, ns, job_name)
+    logs = fetch_job_logs(core, ns, pod) if pod else ""
+    answer = ""
+    if job_name.startswith(QUERY_JOB_PREFIX) and logs:
+        answer = extract_adhoc_answer(logs)
+    return {
+        "name": job_name,
+        "status": phase,
+        "done": succeeded or failed,
+        "succeeded": succeeded,
+        "logs": format_job_logs(logs) if logs else "",
+        "answer": answer,
+        "summary": extract_pipeline_summary(logs) if job_name.startswith(PIPELINE_JOB_PREFIX) else {},
+    }

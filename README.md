@@ -10,7 +10,7 @@ Contents
   - [Preparing the Environment](#preparing-the-environment)
   - [(Optional) Building the Container Images](#optional-building-the-container-images)
   - [Installing via Makefile](#installing-via-makefile)
-- [Code Understanding Console (Streamlit)](#code-understanding-console-streamlit)
+- [Code Understanding Console](#code-understanding-console)
 - [Running the Code Understanding Workflow](#running-the-code-understanding-workflow)
 - [Running Adhoc Queries](#running-adhoc-queries)
 - [Integrating with other tools](#integrating-with-other-tools)
@@ -119,30 +119,33 @@ nohup python3 -m vllm.entrypoints.openai.api_server \
 ### Installing via Makefile
 1. Run the Makefile: `make install`
 
-## Code Understanding Console (Streamlit)
+## Code Understanding Console
 
-Deploy the Streamlit GUI on OpenShift:
+Deploy the FastAPI console as a Kubernetes workload in your namespace. This is the same UI and API as the OpenShift console plugin, for users who cannot install a cluster-wide ConsolePlugin.
 
 ```
 make deploy-console
 # https://code-understanding-console-<namespace>.apps.<cluster-domain>
 ```
 
+`make deploy-console` builds a container image on-cluster, then applies a Deployment, Service, and Route. Namespace admin is enough; cluster-admin is not required.
+
 Run locally (requires `.env` and cluster credentials for pipeline/chat features):
 
 ```
 make run-console
 # or: ./wrappers/console.sh
+# http://127.0.0.1:8080
 ```
 
 Or port-forward the cluster deployment:
 
 ```
 make port-forward-console
-# http://localhost:8501
+# http://localhost:8080
 ```
 
-The console is also included when you run `make install` (`console.enabled=true`).
+The console is also deployed at the end of `make install`.
 
 ## Running the Code Understanding Workflow
 1. To run the **Code Understanding** pipeline for a single repository, run:

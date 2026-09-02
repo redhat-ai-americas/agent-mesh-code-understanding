@@ -20,28 +20,11 @@ spec:
       serviceAccountName: pipeline-upload-job
       containers:
         - name: console
-          image: "{{ .Values.console.image }}"
-          imagePullPolicy: IfNotPresent
-          workingDir: /opt/app-root/src
+          image: "{{ if .Values.console.image }}{{ .Values.console.image }}{{ else }}image-registry.openshift-image-registry.svc:5000/{{ .Values.namespace }}/code-understanding-console:latest{{ end }}"
+          imagePullPolicy: {{ .Values.console.imagePullPolicy | default "Always" }}
           ports:
             - name: http
-              containerPort: 8501
-          command:
-            - sh
-            - -c
-            - |
-              pip install --quiet -r ui/requirements.txt
-              echo ""
-              echo "Console is exposed on the OpenShift Route (not the URLs Streamlit prints below)."
-              echo "Run: oc get route code-understanding-console -n ${KFP_NAMESPACE} -o jsonpath='https://{.spec.host}{\"\\n\"}'"
-              echo ""
-              streamlit run ui/app.py \
-                --server.port=8501 \
-                --server.address=0.0.0.0 \
-                --server.headless=true \
-                --server.enableCORS=false \
-                --server.enableWebsocketCompression=false \
-                --browser.gatherUsageStats=false
+              containerPort: 8080
           env:
             - name: KFP_NAMESPACE
               value: "{{ .Values.namespace }}"
@@ -59,35 +42,25 @@ spec:
             - secretRef:
                 name: code-understanding-env
                 optional: true
-          volumeMounts:
-            - name: ui
-              mountPath: /opt/app-root/src/ui
-            - name: ui
-              mountPath: /opt/app-root/src/.streamlit/config.toml
-              subPath: config.toml
           readinessProbe:
             httpGet:
-              path: /_stcore/health
+              path: /api/health
               port: http
-            initialDelaySeconds: 60
+            initialDelaySeconds: 10
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /_stcore/health
+              path: /api/health
               port: http
-            initialDelaySeconds: 90
+            initialDelaySeconds: 20
             periodSeconds: 20
           resources:
             requests:
-              cpu: 200m
-              memory: 512Mi
+              cpu: 100m
+              memory: 256Mi
             limits:
               cpu: "1"
               memory: 1Gi
-      volumes:
-        - name: ui
-          configMap:
-            name: code-understanding-console-ui
 ---
 apiVersion: v1
 kind: Service
@@ -101,7 +74,7 @@ spec:
     app: code-understanding-console
   ports:
     - name: http
-      port: 8501
+      port: 8080
       targetPort: http
 ---
 kind: Route

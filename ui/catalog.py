@@ -7,10 +7,20 @@ import os
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[1]
-_PACKAGED_CATALOG = Path(__file__).resolve().parent / "repo_list.json"
-_REPO_CATALOG = ROOT / "workflows/examples/code_understanding/assets/repos/repo_list.json"
-DEFAULT_CATALOG = _PACKAGED_CATALOG if _PACKAGED_CATALOG.is_file() else _REPO_CATALOG
+ROOT = Path(__file__).resolve().parent
+_PACKAGED_CATALOG = ROOT / "repo_list.json"
+
+
+def _workflow_catalog() -> Path | None:
+    for parent in [ROOT, *ROOT.parents]:
+        candidate = parent / "workflows/examples/code_understanding/assets/repos/repo_list.json"
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+_REPO_CATALOG = _workflow_catalog()
+DEFAULT_CATALOG = _PACKAGED_CATALOG if _PACKAGED_CATALOG.is_file() else (_REPO_CATALOG or _PACKAGED_CATALOG)
 
 
 def _normalize(entry: dict[str, Any]) -> dict[str, str]:
