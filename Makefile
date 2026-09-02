@@ -219,6 +219,15 @@ run-pipelines:
 
 PLUGIN_IMAGE ?= code-understanding-console-plugin:latest
 
+apply-plugin-src:
+	@set -a && . $(ENV_FILE) && set +a && \
+	echo "==> Publishing plugin job scripts ConfigMap..." && \
+	oc create configmap code-understanding-job-scripts \
+		--from-file=run_pipelines.sh=console-plugin/backend/job-scripts/run_pipelines.sh \
+		--from-file=mlflow_asset_loader.py=console-plugin/backend/job-scripts/mlflow_asset_loader.py \
+		--from-file=default_asset_loader.py=console-plugin/backend/job-scripts/default_asset_loader.py \
+		-n $$KFP_NAMESPACE --dry-run=client -o yaml | oc apply -f -
+
 build-console-plugin:
 	@echo "==> Installing and building OpenShift console plugin..." && \
 	cd console-plugin && npm install --no-audit --no-fund && npm run build
@@ -244,18 +253,42 @@ build-console-plugin-image: build-console-plugin
 	fi && \
 	echo "$$PLUGIN_IMAGE" > console-plugin/.plugin-image.ref
 
-deploy-console-plugin: build-console-plugin-image
+build-plugin-api-image:
 	@set -a && . $(ENV_FILE) && set +a && \
-	STREAMLIT_HOST="$$(oc get route code-understanding-console -n $$KFP_NAMESPACE -o jsonpath='{.spec.host}')" && \
+	echo "==> Building FastAPI plugin backend on-cluster..." && \
+	helm template agent-mesh-for-sw resources/helm \
+	  --set namespace="$$KFP_NAMESPACE" \
+	  --set consolePlugin.enabled=true \
+	  -s templates/console-plugin-api-build.yaml | oc apply -n $$KFP_NAMESPACE -f - && \
+	oc start-build code-understanding-plugin-api --from-dir=console-plugin/backend --follow -n $$KFP_NAMESPACE
+
+deploy-console-plugin: apply-plugin-src build-console-plugin-image build-plugin-api-image
+	@set -a && . $(ENV_FILE) && set +a && \
 	CONSOLE_HOST="$$(oc get route console -n openshift-console -o jsonpath='{.spec.host}')" && \
-	echo "==> Deploying OpenShift console plugin..." && \
+	CLUSTER_DOMAIN="$$(oc get ingress.config cluster -o jsonpath='{.spec.domain}')" && \
+	echo "==> Deploying OpenShift console plugin and FastAPI backend..." && \
 	helm template agent-mesh-for-sw resources/helm \
 		--set namespace="$$KFP_NAMESPACE" \
+		--set repoUrl="$(GIT_REPO_URL)" \
+		--set repoRef="$(GIT_REPO_BRANCH)" \
+		--set clusterDomain="$$CLUSTER_DOMAIN" \
 		--set consolePlugin.enabled=true \
-		--set consolePlugin.streamlitRouteHost="$$STREAMLIT_HOST" \
 		--set consolePlugin.consoleBaseUrl="https://$$CONSOLE_HOST" \
+		-s templates/console-plugin-api.yaml | oc apply -f - && \
+	API_HOST="$$(oc get route code-understanding-plugin-api -n $$KFP_NAMESPACE -o jsonpath='{.spec.host}')" && \
+	helm template agent-mesh-for-sw resources/helm \
+		--set namespace="$$KFP_NAMESPACE" \
+		--set repoUrl="$(GIT_REPO_URL)" \
+		--set repoRef="$(GIT_REPO_BRANCH)" \
+		--set clusterDomain="$$CLUSTER_DOMAIN" \
+		--set consolePlugin.enabled=true \
+		--set consolePlugin.consoleBaseUrl="https://$$CONSOLE_HOST" \
+		--set consolePlugin.apiRouteHost="$$API_HOST" \
 		-s templates/console-plugin.yaml | oc apply -f - && \
+	oc rollout restart deployment/code-understanding-console-plugin -n $$KFP_NAMESPACE && \
+	oc rollout restart deployment/code-understanding-plugin-api -n $$KFP_NAMESPACE && \
 	oc rollout status deployment/code-understanding-console-plugin -n $$KFP_NAMESPACE --timeout=300s && \
+	oc rollout status deployment/code-understanding-plugin-api -n $$KFP_NAMESPACE --timeout=300s && \
 	$(MAKE) enable-console-plugin
 
 enable-console-plugin:

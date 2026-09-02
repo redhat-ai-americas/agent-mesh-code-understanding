@@ -121,11 +121,9 @@ nohup python3 -m vllm.entrypoints.openai.api_server \
 
 ## OpenShift Console Plugin
 
-Embed the Code Understanding Streamlit UI in the OpenShift web console (Administrator perspective).
+The Code Understanding UI is an OpenShift web-console dynamic plugin backed by a FastAPI service (repository catalog, indexes, pipeline jobs, and chat).
 
-**Prerequisite:** deploy the Streamlit console first (`feature/code-understanding-streamlit` PR) so the `code-understanding-console` Route exists.
-
-Build and deploy the dynamic plugin:
+Build and deploy the plugin plus API:
 
 ```
 make deploy-console-plugin
@@ -136,11 +134,9 @@ Then open:
 - **Application launcher** (grid menu, top right) → **Code Understanding**
 - Direct URL: `https://<openshift-console-host>/code-understanding`
 
-Navigation also appears under **Administrator** → **Home** → **Code Understanding**.
+Navigation also appears under **Administrator** → **Home** → **Code Understanding**. Enabling the plugin is cluster-wide via `consoles.operator.openshift.io/cluster`; re-run `make enable-console-plugin` if needed.
 
-The plugin is enabled cluster-wide via `consoles.operator.openshift.io/cluster`. Re-run `make enable-console-plugin` if needed.
-
-Built for OpenShift **4.21** (`@console/pluginAPI: ^4.21.0`). The plugin backend serves HTTPS on port 9443 with an OpenShift serving certificate.
+Built for OpenShift **4.21** (`@console/pluginAPI: ^4.21.0`). The plugin nginx serves HTTPS on port 9443 and the FastAPI backend serves HTTPS on port 8443, both with OpenShift serving certificates.
 
 ## Running the Code Understanding Workflow
 1. To run the **Code Understanding** pipeline for a single repository, run:

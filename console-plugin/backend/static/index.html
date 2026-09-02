@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Code Understanding</title>
+  <style>
+    :root {
+      --cu-red: #ee0000;
+      --cu-red-dark: #c9190b;
+      --cu-blue: #0066cc;
+      --cu-charcoal: #151515;
+      --cu-gray: #6a6e73;
+      --cu-border: #d2d2d2;
+      --cu-bg: #f0f0f0;
+      --cu-green: #3d7317;
+      --cu-gold: #f0ab00;
+      --cu-font: "RedHatText", "Red Hat Text", Helvetica, Arial, sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: var(--cu-font);
+      font-size: 16px;
+      line-height: 1.5;
+      color: var(--cu-charcoal);
+      background: #fff;
+    }
+    button, input, textarea, select { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    h1, h2, h3 { margin: 0; font-weight: 500; }
+
+    .cu-hero {
+      padding: 1.5rem 1.75rem 1.35rem;
+      color: #fff;
+      background:
+        linear-gradient(115deg, rgba(238, 0, 0, 0.28), transparent 48%),
+        var(--cu-charcoal);
+      border-top: 4px solid var(--cu-red);
+    }
+    .cu-eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #d2d2d2;
+      margin-bottom: 0.65rem;
+    }
+    .cu-mark {
+      width: 0.6rem;
+      height: 0.6rem;
+      background: var(--cu-red);
+      transform: rotate(45deg);
+      flex: none;
+    }
+    .cu-hero h1 { font-size: 1.75rem; margin-bottom: 0.4rem; }
+    .cu-hero p { margin: 0; max-width: 46rem; color: #d2d2d2; font-size: 0.95rem; }
+
+    .cu-shell {
+      display: grid;
+      grid-template-columns: 20.5rem minmax(0, 1fr);
+      min-height: calc(100vh - 8.5rem);
+      background: var(--cu-bg);
+    }
+    .cu-rail {
+      background: #fafafa;
+      padding: 1.25rem 1rem;
+      border-right: 1px solid var(--cu-border);
+    }
+    .cu-main { padding: 1rem 1.25rem 2rem; min-width: 0; }
+
+    .cu-status {
+      background: #fff;
+      padding: 0.85rem 1rem;
+      border: 1px solid var(--cu-border);
+      border-left: 4px solid var(--cu-green);
+      margin-bottom: 1.25rem;
+    }
+    .cu-status.warn { border-left-color: var(--cu-gold); }
+    .cu-muted { color: var(--cu-gray); font-size: 0.875rem; }
+    .cu-rail h2 {
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--cu-gray);
+      margin: 1.15rem 0 0.55rem;
+    }
+    .cu-rail-list { display: flex; flex-direction: column; gap: 0.5rem; }
+
+    .cu-index-card {
+      display: grid;
+      grid-template-columns: 0.55rem minmax(0, 1fr);
+      gap: 0.7rem;
+      align-items: start;
+      background: #fff;
+      border: 1px solid var(--cu-border);
+      border-radius: 4px;
+      padding: 0.7rem 0.75rem;
+      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+    }
+    .cu-index-card:hover { border-color: #b8bbbe; }
+    .cu-index-dot {
+      width: 0.55rem;
+      height: 0.55rem;
+      margin-top: 0.4rem;
+      border-radius: 50%;
+      background: var(--cu-green);
+      box-shadow: 0 0 0 3px #e9f7e9;
+    }
+    .cu-index-card.multi .cu-index-dot { background: var(--cu-blue); box-shadow: 0 0 0 3px #e7f1fa; }
+    .cu-index-title {
+      font-weight: 600;
+      font-size: 0.88rem;
+      line-height: 1.3;
+      word-break: break-word;
+    }
+    .cu-index-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-top: 0.35rem;
+      align-items: center;
+    }
+    .cu-index-owner { color: var(--cu-gray); font-size: 0.75rem; }
+
+    .cu-job-card {
+      display: grid;
+      grid-template-columns: 0.55rem minmax(0, 1fr) auto;
+      gap: 0.55rem;
+      align-items: center;
+      background: #fff;
+      border: 1px solid var(--cu-border);
+      border-radius: 4px;
+      padding: 0.55rem 0.7rem;
+    }
+    .cu-job-dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--cu-gray); }
+    .cu-job-dot.Succeeded { background: var(--cu-green); }
+    .cu-job-dot.Failed { background: var(--cu-red); }
+    .cu-job-dot.Running, .cu-job-dot.Pending { background: var(--cu-gold); }
+    .cu-job-kind { font-size: 0.78rem; font-weight: 600; }
+    .cu-job-name { font-size: 0.7rem; color: var(--cu-gray); word-break: break-all; }
+
+    .cu-tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--cu-border);
+      margin-bottom: 1rem;
+      background: #fff;
+      padding: 0 0.5rem;
+    }
+    .cu-tabs button {
+      background: none;
+      border: 0;
+      border-bottom: 3px solid transparent;
+      margin-bottom: -1px;
+      padding: 0.7rem 1rem;
+      font-weight: 600;
+      color: var(--cu-charcoal);
+    }
+    .cu-tabs button:hover { color: var(--cu-red); }
+    .cu-tabs button.active { border-bottom-color: var(--cu-red); color: var(--cu-red); }
+
+    .cu-card {
+      background: #fff;
+      border: 1px solid var(--cu-border);
+      padding: 1rem 1.15rem 1.25rem;
+    }
+
+    .cu-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 2.25rem;
+      padding: 0 1rem;
+      border-radius: 3px;
+      font-weight: 500;
+      font-size: 0.95rem;
+      border: 1px solid transparent;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .cu-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .cu-btn-primary { background: var(--cu-red); color: #fff; }
+    .cu-btn-primary:hover:not(:disabled) { background: var(--cu-red-dark); }
+    .cu-btn-secondary { background: #fff; color: var(--cu-charcoal); border-color: var(--cu-charcoal); }
+    .cu-btn-secondary:hover:not(:disabled) { background: #f0f0f0; }
+    .cu-btn-link {
+      background: none;
+      color: var(--cu-blue);
+      border: 0;
+      min-height: 2.25rem;
+      padding: 0 0.65rem;
+    }
+    .cu-btn-link:hover:not(:disabled) { color: #004080; text-decoration: underline; }
+    .cu-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: 0.85rem 0; }
+
+    .cu-field, .cu-select, textarea {
+      width: 100%;
+      min-height: 2.25rem;
+      padding: 0.4rem 0.6rem;
+      border: 1px solid #8a8d90;
+      border-radius: 0;
+      background: #fff;
+    }
+    .cu-field:focus, .cu-select:focus, textarea:focus {
+      outline: 2px solid var(--cu-blue);
+      outline-offset: -1px;
+      border-color: var(--cu-blue);
+    }
+    textarea { min-height: 4.5rem; resize: vertical; }
+
+    .cu-repo-list { border: 1px solid var(--cu-border); background: #fff; }
+    .cu-repo {
+      display: grid;
+      grid-template-columns: 1.25rem minmax(0, 1fr) auto;
+      column-gap: 0.75rem;
+      align-items: center;
+      width: 100%;
+      margin: 0;
+      padding: 0.7rem 0.9rem;
+      border-bottom: 1px solid #f0f0f0;
+      cursor: pointer;
+    }
+    .cu-repo:last-child { border-bottom: 0; }
+    .cu-repo:hover { background: #f5f5f5; }
+    .cu-check {
+      appearance: auto;
+      width: 1rem;
+      height: 1rem;
+      min-width: 1rem;
+      margin: 0;
+      padding: 0;
+      border: 1px solid #8a8d90;
+      accent-color: var(--cu-red);
+      justify-self: center;
+    }
+    .cu-repo-body { min-width: 0; }
+    .cu-repo-title {
+      display: block;
+      font-weight: 600;
+      font-size: 0.95rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .cu-repo-url {
+      display: block;
+      color: var(--cu-gray);
+      font-size: 0.8rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .cu-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; justify-content: flex-end; }
+    .cu-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 0 0.45rem;
+      border-radius: 10px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      line-height: 1.4rem;
+      background: #f0f0f0;
+      color: #363636;
+    }
+    .cu-chip.indexed { background: #e9f7e9; color: var(--cu-green); }
+    .cu-chip.default { background: #fce8e8; color: var(--cu-red-dark); }
+
+    .cu-custom {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 8rem auto;
+      gap: 0.5rem;
+      margin-top: 1rem;
+      align-items: center;
+    }
+    .cu-composer {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+      align-items: start;
+    }
+    .cu-note {
+      background: #fce8e8;
+      border-left: 3px solid var(--cu-red);
+      padding: 0.65rem 0.85rem;
+      margin-top: 1rem;
+      font-size: 0.9rem;
+    }
+
+    .cu-thinking {
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+      background: #fff;
+      border: 1px solid var(--cu-border);
+      border-left: 4px solid var(--cu-red);
+      padding: 0.75rem 1rem 0.85rem;
+      margin-bottom: 1rem;
+    }
+    .cu-thinking-row { display: flex; align-items: center; gap: 0.7rem; }
+    .cu-thinking-copy { min-width: 0; }
+    .cu-thinking-label { font-weight: 600; }
+    .cu-thinking-status { color: var(--cu-gray); font-size: 0.85rem; }
+    .cu-spinner {
+      width: 1.1rem;
+      height: 1.1rem;
+      border: 2px solid #d2d2d2;
+      border-top-color: var(--cu-red);
+      border-radius: 50%;
+      animation: cu-spin 0.7s linear infinite;
+      flex: none;
+    }
+    .cu-progress {
+      height: 3px;
+      background: #f0f0f0;
+      overflow: hidden;
+      border-radius: 2px;
+    }
+    .cu-progress > span {
+      display: block;
+      height: 100%;
+      width: 35%;
+      background: var(--cu-red);
+      animation: cu-indet 1.15s ease-in-out infinite;
+    }
+    @keyframes cu-spin { to { transform: rotate(360deg); } }
+    @keyframes cu-indet {
+      0% { transform: translateX(-120%); }
+      100% { transform: translateX(320%); }
+    }
+
+    .cu-chat {
+      min-height: 16rem;
+      background: #fafafa;
+      border: 1px solid var(--cu-border);
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+    .cu-bubble { max-width: 100%; }
+    .cu-bubble.user {
+      width: fit-content;
+      max-width: min(36rem, 85%);
+      margin-left: auto;
+      background: var(--cu-charcoal);
+      color: #fff;
+      padding: 0.65rem 0.9rem;
+      border-radius: 14px 14px 4px 14px;
+      white-space: pre-wrap;
+    }
+    .cu-bubble.assistant {
+      background: #fff;
+      border: 1px solid var(--cu-border);
+      border-left: 3px solid var(--cu-red);
+      padding: 0.9rem 1.1rem 1rem;
+      border-radius: 2px;
+    }
+    .cu-bubble.thinking-msg {
+      display: flex;
+      align-items: center;
+      gap: 0.7rem;
+      color: var(--cu-gray);
+      font-weight: 600;
+    }
+    .cu-md { line-height: 1.55; overflow-wrap: anywhere; }
+    .cu-md > *:first-child { margin-top: 0; }
+    .cu-md > *:last-child { margin-bottom: 0; }
+    .cu-md h1, .cu-md h2, .cu-md h3 {
+      font-weight: 600;
+      line-height: 1.3;
+      margin: 1.1rem 0 0.4rem;
+    }
+    .cu-md h1 { font-size: 1.25rem; }
+    .cu-md h2 { font-size: 1.1rem; }
+    .cu-md h3 { font-size: 1rem; }
+    .cu-md p { margin: 0.55rem 0; }
+    .cu-md ul, .cu-md ol { margin: 0.4rem 0 0.7rem; padding-left: 1.35rem; }
+    .cu-md li { margin: 0.28rem 0; }
+    .cu-md a { color: var(--cu-blue); }
+    .cu-md hr { border: 0; border-top: 1px solid var(--cu-border); margin: 1rem 0; }
+    .cu-md code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.84em;
+      background: #f0f0f0;
+      padding: 0.12em 0.38em;
+      border-radius: 3px;
+    }
+    .cu-md pre {
+      background: #151515;
+      color: #f5f5f5;
+      padding: 0.85rem 1rem;
+      overflow-x: auto;
+      font-size: 0.84rem;
+      line-height: 1.45;
+      margin: 0.75rem 0;
+    }
+    .cu-md pre code {
+      background: none;
+      color: inherit;
+      padding: 0;
+      font-size: inherit;
+    }
+    .hidden { display: none !important; }
+    .cu-form-label { display: block; font-weight: 600; margin-bottom: 0.35rem; }
+
+    @media (max-width: 900px) {
+      .cu-shell, .cu-custom, .cu-composer { grid-template-columns: 1fr; }
+      .cu-repo { grid-template-columns: 1.25rem minmax(0, 1fr); }
+      .cu-chips { grid-column: 2; justify-content: flex-start; margin-top: 0.25rem; }
+    }
+  </style>
+</head>
+<body>
+  <header class="cu-hero">
+    <div class="cu-eyebrow"><span class="cu-mark"></span>Red Hat OpenShift AI</div>
+    <h1>Code Understanding</h1>
+    <p>GraphRAG analysis for brownfield codebases — select a repository, build an index, and ask grounded questions from the OpenShift console.</p>
+  </header>
+  <div class="cu-shell">
+    <aside class="cu-rail">
+      <div id="status" class="cu-status">Checking cluster access…</div>
+      <h2>Indexed repositories</h2>
+      <div id="indexes" class="cu-rail-list"></div>
+      <h2>Recent jobs</h2>
+      <div id="jobs" class="cu-rail-list"></div>
+    </aside>
+    <main class="cu-main">
+      <div id="thinking-bar" class="cu-thinking hidden" role="status" aria-live="polite">
+        <div class="cu-thinking-row">
+          <span class="cu-spinner" aria-hidden="true"></span>
+          <div class="cu-thinking-copy">
+            <div class="cu-thinking-label" id="thinking-label">Thinking</div>
+            <div class="cu-thinking-status" id="thinking-status">Working on your request…</div>
+          </div>
+        </div>
+        <div class="cu-progress"><span></span></div>
+      </div>
+      <div id="banner"></div>
+      <div class="cu-tabs">
+        <button type="button" class="active" data-tab="repos">Repositories</button>
+        <button type="button" data-tab="pipelines">Run pipelines</button>
+        <button type="button" data-tab="chat">Chat</button>
+      </div>
+      <section id="tab-repos" class="cu-card">
+        <p class="cu-muted">Select catalog repos or add a custom git URL. One repo → single-repo; multiple → multi-repo.</p>
+        <div class="cu-actions">
+          <button type="button" class="cu-btn cu-btn-secondary" id="select-all">Select all</button>
+          <button type="button" class="cu-btn cu-btn-link" id="clear">Clear</button>
+          <button type="button" class="cu-btn cu-btn-link" id="refresh">Refresh indexes</button>
+        </div>
+        <div id="repo-list" class="cu-repo-list"></div>
+        <div class="cu-custom">
+          <input class="cu-field" id="custom-url" placeholder="https://github.com/org/repo" />
+          <input class="cu-field" id="custom-branch" value="main" />
+          <button type="button" class="cu-btn cu-btn-secondary" id="add-custom">Add to selection</button>
+        </div>
+        <div class="cu-note" id="selection-note">0 selected</div>
+      </section>
+      <section id="tab-pipelines" class="cu-card hidden">
+        <p class="cu-muted">Indexing runs as a Kubeflow pipeline in the background after submit succeeds.</p>
+        <div class="cu-note" id="pipeline-selection"></div>
+        <p><button type="button" class="cu-btn cu-btn-primary" id="run-pipeline">Run Code Understanding</button></p>
+      </section>
+      <section id="tab-chat" class="cu-card hidden">
+        <p>
+          <label class="cu-form-label" for="chat-repo">Repository</label>
+          <select class="cu-select" id="chat-repo"></select>
+        </p>
+        <div class="cu-chat" id="chat-log"></div>
+        <div class="cu-composer">
+          <textarea id="question" placeholder="Ask about the indexed code…"></textarea>
+          <button type="button" class="cu-btn cu-btn-primary" id="send">Send</button>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script>
+    const state = {
+      repos: [], selected: new Set(), indexes: [], queryable: [],
+      defaultKey: null, poll: null, chat: [], thinking: null,
+    };
+
+    const $ = (id) => document.getElementById(id);
+    const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[ch]));
+
+    function inlineMd(raw) {
+      const codes = [];
+      let text = String(raw ?? "").replace(/`([^`]+)`/g, (_, code) => {
+        codes.push(`<code>${esc(code)}</code>`);
+        return `%%C${codes.length - 1}%%`;
+      });
+      text = esc(text);
+      text = text.replace(
+        /\[([^\]]+)\]\((https?:[^)\s]+)\)/g,
+        '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
+      );
+      text = text.replace(
+        /(^|[^"'>=])(https?:\/\/[^\s<]+)/g,
+        '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>'
+      );
+      text = text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+      text = text.replace(/(^|[^*])\*(?!\s)([^*]+?)\*(?!\*)/g, "$1<em>$2</em>");
+      return text.replace(/%%C(\d+)%%/g, (_, i) => codes[Number(i)]);
+    }
+
+    function renderMarkdown(src) {
+      const fences = [];
+      let text = String(src ?? "").replace(/\r\n/g, "\n");
+      text = text.replace(/```[\w+-]*\n?([\s\S]*?)```/g, (_, code) => {
+        fences.push(`<pre><code>${esc(code.replace(/\n$/, ""))}</code></pre>`);
+        return `\n\n%%FENCE${fences.length - 1}%%\n\n`;
+      });
+      const lines = text.split("\n");
+      const html = [];
+      let i = 0;
+      const isFence = (line) => line.trim().match(/^%%FENCE(\d+)%%$/);
+      const isList = (line) => /^[-*] /.test(line);
+      const isOl = (line) => /^\d+\. /.test(line);
+      const isHeading = (line) => /^#{1,3} /.test(line);
+      const isStep = (line) => /^\*\*\d+\.\s+.+\*\*$/.test(line.trim());
+      while (i < lines.length) {
+        const line = lines[i];
+        const fence = isFence(line);
+        if (fence) { html.push(fences[Number(fence[1])]); i += 1; continue; }
+        if (!line.trim()) { i += 1; continue; }
+        if (/^---+$/.test(line.trim())) { html.push("<hr/>"); i += 1; continue; }
+        if (isHeading(line)) {
+          const level = line.match(/^#+/)[0].length;
+          html.push(`<h${level}>${inlineMd(line.replace(/^#+\s+/, ""))}</h${level}>`);
+          i += 1; continue;
+        }
+        if (isStep(line)) {
+          html.push(`<h3>${inlineMd(line.trim())}</h3>`);
+          i += 1; continue;
+        }
+        if (isList(line)) {
+          html.push("<ul>");
+          while (i < lines.length && isList(lines[i])) {
+            html.push(`<li>${inlineMd(lines[i].replace(/^[-*] /, ""))}</li>`);
+            i += 1;
+          }
+          html.push("</ul>");
+          continue;
+        }
+        if (isOl(line)) {
+          html.push("<ol>");
+          while (i < lines.length && isOl(lines[i])) {
+            html.push(`<li>${inlineMd(lines[i].replace(/^\d+\. /, ""))}</li>`);
+            i += 1;
+          }
+          html.push("</ol>");
+          continue;
+        }
+        const para = [];
+        while (
+          i < lines.length &&
+          lines[i].trim() &&
+          !isHeading(lines[i]) &&
+          !isList(lines[i]) &&
+          !isOl(lines[i]) &&
+          !isFence(lines[i]) &&
+          !isStep(lines[i]) &&
+          !/^---+$/.test(lines[i].trim())
+        ) {
+          para.push(lines[i]);
+          i += 1;
+        }
+        html.push(`<p>${inlineMd(para.join(" "))}</p>`);
+      }
+      return `<div class="cu-md">${html.join("")}</div>`;
+    }
+
+    const banner = (msg, danger) => {
+      $("banner").innerHTML = msg
+        ? `<div class="cu-note" style="${danger ? "" : "background:#e7f1fa;border-left-color:#0066cc"}">${esc(msg)}</div>`
+        : "";
+    };
+
+    function setThinking(info) {
+      state.thinking = info;
+      const bar = $("thinking-bar");
+      if (!info) {
+        bar.classList.add("hidden");
+        $("send").disabled = false;
+        $("run-pipeline").disabled = false;
+        return;
+      }
+      bar.classList.remove("hidden");
+      $("thinking-label").textContent = info.label || "Thinking";
+      $("thinking-status").textContent = info.status || "Working on your request…";
+      $("send").disabled = true;
+      $("run-pipeline").disabled = true;
+    }
+
+    async function api(path, opts) {
+      const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+      const text = await res.text();
+      if (!res.ok) throw new Error(text || res.statusText);
+      return text ? JSON.parse(text) : {};
+    }
+    function shortName(url) { return url.replace(/\/$/, "").split("/").pop(); }
+    function repoKey(r) { return `${r.git_repo}|${r.git_branch}`; }
+    function selectedRepos() { return state.repos.filter((r) => state.selected.has(repoKey(r))); }
+    function gitSlug(url, branch) {
+      try {
+        const path = new URL(url).pathname.replace(/^\//, "").replace(/\.git$/, "");
+        const parts = path.split("/").filter(Boolean);
+        const name = parts.pop() || "repo";
+        const owner = parts.pop() || "";
+        return `${owner}-${name}-${branch}`.slice(0, 255);
+      } catch {
+        return `${url}-${branch}`;
+      }
+    }
+    function prettyDate(iso) {
+      if (!iso) return "";
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return String(iso).slice(0, 10);
+      return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    }
+    function showTab(name) {
+      document.querySelectorAll(".cu-tabs button").forEach((b) => {
+        b.classList.toggle("active", b.dataset.tab === name);
+      });
+      ["repos", "pipelines", "chat"].forEach((tab) => {
+        $("tab-" + tab).classList.toggle("hidden", tab !== name);
+      });
+    }
+
+    function indexCard(item) {
+      if (item.multi_repo) {
+        return `<article class="cu-index-card multi">
+          <span class="cu-index-dot"></span>
+          <div>
+            <div class="cu-index-title">Combined multi-repo index</div>
+            <div class="cu-index-meta">
+              <span class="cu-chip indexed">ready</span>
+              ${item.indexed_at ? `<span class="cu-chip">${esc(prettyDate(item.indexed_at))}</span>` : ""}
+            </div>
+          </div>
+        </article>`;
+      }
+      const match = state.repos.find((r) => gitSlug(r.git_repo, r.git_branch) === item.git_slug);
+      const title = match ? shortName(match.git_repo).replace(/\.git$/, "") : (item.git_slug || "Index");
+      const owner = match
+        ? (match.git_repo.replace(/^https?:\/\//, "").split("/")[1] || match.git_repo)
+        : "";
+      const branch = match ? match.git_branch : "";
+      return `<article class="cu-index-card">
+        <span class="cu-index-dot"></span>
+        <div>
+          <div class="cu-index-title">${esc(title)}</div>
+          <div class="cu-index-meta">
+            ${owner ? `<span class="cu-index-owner">${esc(owner)}</span>` : ""}
+            ${branch ? `<span class="cu-chip">${esc(branch)}</span>` : ""}
+            <span class="cu-chip indexed">indexed</span>
+            ${item.indexed_at ? `<span class="cu-chip">${esc(prettyDate(item.indexed_at))}</span>` : ""}
+          </div>
+        </div>
+      </article>`;
+    }
+
+    function jobCard(job) {
+      const kind = (job.name || "").startsWith("cu-query-") ? "Query" : "Pipeline";
+      return `<article class="cu-job-card">
+        <span class="cu-job-dot ${esc(job.status)}"></span>
+        <div>
+          <div class="cu-job-kind">${esc(kind)}</div>
+          <div class="cu-job-name">${esc(job.name)}</div>
+        </div>
+        <span class="cu-chip ${job.status === "Succeeded" ? "indexed" : ""}">${esc(job.status)}</span>
+      </article>`;
+    }
+
+    function renderRepos() {
+      $("repo-list").innerHTML = state.repos.map((r) => {
+        const key = repoKey(r);
+        const slug = (shortName(r.git_repo) || "").replace(/\.git$/, "");
+        const indexed = state.indexes.some((i) => !i.multi_repo && (i.git_slug || "").includes(slug));
+        const chips = [
+          `<span class="cu-chip">${esc(r.git_branch)}</span>`,
+          indexed ? '<span class="cu-chip indexed">indexed</span>' : "",
+          state.defaultKey === key ? '<span class="cu-chip default">default</span>' : "",
+        ].join("");
+        return `<label class="cu-repo">
+          <input class="cu-check" type="checkbox" data-key="${esc(key)}" ${state.selected.has(key) ? "checked" : ""}/>
+          <span class="cu-repo-body">
+            <span class="cu-repo-title">${esc(slug || r.git_repo)}</span>
+            <span class="cu-repo-url">${esc(r.git_repo)}</span>
+          </span>
+          <span class="cu-chips">${chips}</span>
+        </label>`;
+      }).join("");
+      $("repo-list").querySelectorAll("input").forEach((el) => {
+        el.addEventListener("change", () => {
+          if (el.checked) state.selected.add(el.dataset.key); else state.selected.delete(el.dataset.key);
+          renderSelection();
+        });
+      });
+      renderSelection();
+    }
+    function renderSelection() {
+      const n = selectedRepos().length;
+      const mode = n > 1 ? "multi-repo" : "single-repo";
+      $("selection-note").textContent = `${n} selected · ${mode}`;
+      $("pipeline-selection").textContent = n
+        ? selectedRepos().map((r) => `${shortName(r.git_repo)} @ ${r.git_branch}`).join(", ")
+        : "Select a repository first";
+    }
+    function renderChatSelect() {
+      $("chat-repo").innerHTML = state.queryable.map((o) =>
+        `<option value="${esc(o.key)}">${esc(o.label)}</option>`
+      ).join("");
+    }
+    function renderChat() {
+      if (!state.chat.length && !state.thinking) {
+        $("chat-log").innerHTML = `<p class="cu-muted">What would you like to know?</p>
+          <div class="cu-actions">
+            <button type="button" class="cu-btn cu-btn-secondary" data-q="Migration order for refactoring">Migration order for refactoring</button>
+            <button type="button" class="cu-btn cu-btn-secondary" data-q="Riskiest modules to refactor">Riskiest modules to refactor</button>
+            <button type="button" class="cu-btn cu-btn-secondary" data-q="Data stores in this codebase">Data stores in this codebase</button>
+          </div>`;
+        $("chat-log").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => sendQuestion(b.dataset.q)));
+        return;
+      }
+      const messages = state.chat.map((m) => m.role === "assistant"
+        ? `<div class="cu-bubble assistant">${renderMarkdown(m.content)}</div>`
+        : `<div class="cu-bubble user">${esc(m.content)}</div>`
+      );
+      if (state.thinking && state.thinking.kind === "query") {
+        messages.push(`<div class="cu-bubble assistant thinking-msg">
+          <span class="cu-spinner" aria-hidden="true"></span>
+          Analyzing indexed code${state.thinking.status ? " · " + esc(state.thinking.status) : ""}
+        </div>`);
+      }
+      $("chat-log").innerHTML = messages.join("");
+      $("chat-log").scrollTop = $("chat-log").scrollHeight;
+    }
+
+    async function load() {
+      try {
+        const [status, catalog, indexes, jobs] = await Promise.all([
+          api("/api/status"), api("/api/catalog"), api("/api/indexes"), api("/api/jobs"),
+        ]);
+        $("status").className = "cu-status" + (status.ok ? "" : " warn");
+        $("status").innerHTML = `<strong>${status.ok ? "Connected" : "Not connected"}</strong><div>${esc(status.message || "")}</div>
+          <div class="cu-muted">Namespace · ${esc(status.namespace || "")}</div>`;
+        state.repos = catalog.repos || [];
+        state.defaultKey = catalog.default_key;
+        if (!state.selected.size && state.defaultKey) state.selected.add(state.defaultKey);
+        state.indexes = indexes.indexes || [];
+        state.queryable = indexes.queryable || [];
+        $("indexes").innerHTML = state.indexes.length
+          ? state.indexes.map(indexCard).join("")
+          : `<p class="cu-muted">${esc(indexes.message || "No indexes yet.")}</p>`;
+        $("jobs").innerHTML = (jobs.jobs || []).length
+          ? jobs.jobs.map(jobCard).join("")
+          : `<p class="cu-muted">No jobs yet.</p>`;
+        renderRepos();
+        renderChatSelect();
+        renderChat();
+        if (!state.thinking) banner("");
+      } catch (e) {
+        banner(String(e.message || e), true);
+      }
+    }
+
+    async function poll(job, kind) {
+      if (state.poll) clearInterval(state.poll);
+      const tick = async () => {
+        try {
+          const snap = await api(`/api/jobs/${job}`);
+          if (state.thinking) {
+            setThinking({
+              ...state.thinking,
+              status: `${snap.status} · ${job}`,
+            });
+            if (kind === "query") renderChat();
+          }
+          if (snap.done) {
+            clearInterval(state.poll);
+            state.poll = null;
+            setThinking(null);
+            if (snap.answer) state.chat.push({ role: "assistant", content: snap.answer });
+            renderChat();
+            load();
+          }
+        } catch (e) {
+          clearInterval(state.poll);
+          state.poll = null;
+          setThinking(null);
+          renderChat();
+          banner(String(e.message || e), true);
+        }
+      };
+      tick();
+      state.poll = setInterval(tick, 4000);
+    }
+
+    async function sendQuestion(text) {
+      const question = (text || "").trim();
+      if (!question || state.thinking) return;
+      const option = state.queryable.find((o) => o.key === $("chat-repo").value) || {};
+      state.chat.push({ role: "user", content: question });
+      $("question").value = "";
+      showTab("chat");
+      setThinking({ kind: "query", label: "Thinking", status: "Submitting your question…" });
+      renderChat();
+      try {
+        const result = await api("/api/query", {
+          method: "POST",
+          body: JSON.stringify({
+            question,
+            git_repo: option.git_repo || "",
+            git_branch: option.git_branch || "main",
+            use_global: option.use_global || false,
+          }),
+        });
+        setThinking({ kind: "query", label: "Thinking", status: `Job ${result.job_name} started` });
+        renderChat();
+        poll(result.job_name, "query");
+      } catch (e) {
+        setThinking(null);
+        renderChat();
+        banner(String(e.message || e), true);
+      }
+    }
+
+    document.querySelectorAll(".cu-tabs button").forEach((btn) => {
+      btn.addEventListener("click", () => showTab(btn.dataset.tab));
+    });
+    $("select-all").onclick = () => { state.repos.forEach((r) => state.selected.add(repoKey(r))); renderRepos(); };
+    $("clear").onclick = () => { state.selected.clear(); renderRepos(); };
+    $("refresh").onclick = load;
+    $("add-custom").onclick = () => {
+      const git_repo = $("custom-url").value.trim();
+      const git_branch = $("custom-branch").value.trim() || "main";
+      if (!git_repo) return;
+      const key = `${git_repo}|${git_branch}`;
+      if (!state.repos.some((r) => repoKey(r) === key)) state.repos.push({ git_repo, git_branch });
+      state.selected.add(key);
+      $("custom-url").value = "";
+      renderRepos();
+    };
+    $("run-pipeline").onclick = async () => {
+      if (state.thinking) return;
+      setThinking({ kind: "pipeline", label: "Running pipeline", status: "Submitting indexing job…" });
+      try {
+        const result = await api("/api/pipelines", { method: "POST", body: JSON.stringify({ repos: selectedRepos() }) });
+        setThinking({ kind: "pipeline", label: "Running pipeline", status: `Job ${result.job_name} started` });
+        poll(result.job_name, "pipeline");
+      } catch (e) {
+        setThinking(null);
+        banner(String(e.message || e), true);
+      }
+    };
+    $("send").onclick = () => sendQuestion($("question").value);
+    $("question").addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        sendQuestion($("question").value);
+      }
+    });
+    load();
+  </script>
+</body>
+</html>

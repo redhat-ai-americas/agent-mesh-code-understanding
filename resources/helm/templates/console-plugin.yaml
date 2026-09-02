@@ -10,7 +10,7 @@ metadata:
 data:
   config.json: |
     {
-      "appUrl": "https://{{ include "codeUnderstanding.consoleRouteHost" . }}"
+      "appUrl": "https://{{ include "codeUnderstanding.pluginApiRouteHost" . }}"
     }
   nginx.conf: |
     worker_processes auto;
@@ -141,6 +141,15 @@ spec:
       namespace: {{ .Values.namespace }}
       port: 9443
       basePath: /
+  proxy:
+    - alias: backend
+      authorization: None
+      endpoint:
+        type: Service
+        service:
+          name: code-understanding-plugin-api
+          namespace: {{ .Values.namespace }}
+          port: 8443
   i18n:
     loadType: Preload
 ---

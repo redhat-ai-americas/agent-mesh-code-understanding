@@ -1,0 +1,110 @@
+{{- if .Values.consolePlugin.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: code-understanding-plugin-api
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: code-understanding-plugin-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: code-understanding-plugin-api
+  template:
+    metadata:
+      labels:
+        app: code-understanding-plugin-api
+    spec:
+      serviceAccountName: pipeline-upload-job
+      containers:
+        - name: api
+          image: "{{ if .Values.consolePlugin.apiImage }}{{ .Values.consolePlugin.apiImage }}{{ else }}image-registry.openshift-image-registry.svc:5000/{{ .Values.namespace }}/code-understanding-plugin-api:latest{{ end }}"
+          imagePullPolicy: Always
+          ports:
+            - name: https
+              containerPort: 8443
+          env:
+            - name: KFP_NAMESPACE
+              value: "{{ .Values.namespace }}"
+            - name: AGENTMESH_REPO_URL
+              value: "{{ .Values.repoUrl }}"
+            - name: AGENTMESH_REPO_REF
+              value: "{{ .Values.repoRef }}"
+            - name: AGENTMESH_JOB_REPO_REF
+              value: "main"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          envFrom:
+            - secretRef:
+                name: code-understanding-env
+                optional: true
+          volumeMounts:
+            - name: serving-cert
+              mountPath: /var/serving-cert
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: serving-cert
+          secret:
+            secretName: code-understanding-plugin-api-cert
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: code-understanding-plugin-api
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: code-understanding-plugin-api
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: code-understanding-plugin-api-cert
+spec:
+  selector:
+    app: code-understanding-plugin-api
+  ports:
+    - name: https
+      port: 8443
+      targetPort: https
+---
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: code-understanding-plugin-api
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: code-understanding-plugin-api
+  annotations:
+    haproxy.router.openshift.io/timeout: 30m
+spec:
+  to:
+    kind: Service
+    name: code-understanding-plugin-api
+    weight: 100
+  port:
+    targetPort: https
+  tls:
+    termination: reencrypt
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+{{- end }}
