@@ -1,11 +1,11 @@
 
-ENV_FILE            ?= ./.env
-GIT_REPO_URL        := $(shell git remote get-url origin 2>/dev/null | sed 's|^git@\([^:]*\):\(.*\)$$|https://\1/\2|')
-GIT_REPO_BRANCH     := $(shell git branch --show-current 2>/dev/null)
-CLUSTER_DOMAIN      := $(shell oc get ingress.config cluster -o jsonpath='{.spec.domain}' 2>/dev/null)
-PIPELINE_GIT_REPO   ?=
-
-PIPELINE_GIT_BRANCH ?=
+ENV_FILE            	?= ./.env
+GIT_REPO_URL        	:= $(shell git remote get-url origin 2>/dev/null | sed 's|^git@\([^:]*\):\(.*\)$$|https://\1/\2|')
+GIT_REPO_BRANCH     	:= $(shell git branch --show-current 2>/dev/null)
+CLUSTER_DOMAIN      	:= $(shell oc get ingress.config cluster -o jsonpath='{.spec.domain}' 2>/dev/null)
+PIPELINE_GIT_REPO   	?=
+PIPELINE_GIT_BRANCH 	?=
+PIPELINE_GIT_REPO_LIST	?=
 
 install:
 	@set -a && . $(ENV_FILE) && set +a && \
@@ -27,6 +27,7 @@ install:
 		--set repoRef="$(GIT_REPO_BRANCH)" \
 		--set minio.rootUser="$$AWS_ACCESS_KEY_ID" \
 		--set minio.rootPassword="$$AWS_SECRET_ACCESS_KEY" \
+		--set minio.image="$$MINIO_IMAGE" \
 		--set dataGeneration.image.registry="$$KFP_IMAGE_REGISTRY" \
 		--set dataGeneration.image.name="$$KFP_DATA_GENERATION_BASE_IMAGE_NAME" \
 		--set dataGeneration.image.tag="$$KFP_DATA_GENERATION_BASE_IMAGE_TAG" \
@@ -36,6 +37,9 @@ install:
 		--set analysis.image.registry="$$KFP_IMAGE_REGISTRY" \
 		--set analysis.image.name="$$KFP_ANALYSIS_BASE_IMAGE_NAME" \
 		--set analysis.image.tag="$$KFP_ANALYSIS_BASE_IMAGE_TAG" \
+		--set pipelineTools.image.registry="$$KFP_IMAGE_REGISTRY" \
+		--set pipelineTools.image.name="$$KFP_PIPELINE_TOOLS_IMAGE_NAME" \
+		--set pipelineTools.image.tag="$$KFP_PIPELINE_TOOLS_IMAGE_TAG" \
 		--set clusterDomain="$(CLUSTER_DOMAIN)" \
 		--set console.enabled=false
 	$(MAKE) apply-secrets
@@ -106,6 +110,16 @@ apply-secrets:
 	echo "==> Recreating secret code-understanding-env..." && \
 	oc delete secret code-understanding-env -n $$KFP_NAMESPACE --ignore-not-found=true && \
 	oc create secret generic code-understanding-env --from-env-file $(ENV_FILE) -n $$KFP_NAMESPACE && \
+	\
+	REPO_LIST="$$GIT_REPO_LIST" && \
+	if [ -n "$$PIPELINE_GIT_REPO_LIST" ] && [ -f "$$PIPELINE_GIT_REPO_LIST" ]; then \
+		echo "==> PIPELINE_GIT_REPO_LIST is set, using instead of GIT_REPO_LIST"; \
+		REPO_LIST="$$PIPELINE_GIT_REPO_LIST"; \
+	fi && \
+	if [ -n "$$REPO_LIST" ] && [ -f "$$REPO_LIST" ]; then \
+		oc set data secret/code-understanding-env -n $$KFP_NAMESPACE \
+			--from-file=GIT_REPO_LIST_CONTENTS="$$REPO_LIST"; \
+	fi || true && \
 	oc patch secret code-understanding-env -n $$KFP_NAMESPACE \
 		--type=merge \
 		-p "{\"stringData\":{\"MLFLOW_WORKSPACE\":\"$$KFP_NAMESPACE\"}}"
@@ -115,6 +129,7 @@ build-images:
 	DATAGEN_IMG="$$KFP_IMAGE_REGISTRY/$$KFP_DATA_GENERATION_BASE_IMAGE_NAME:$$KFP_DATA_GENERATION_BASE_IMAGE_TAG" && \
 	INDEX_IMG="$$KFP_IMAGE_REGISTRY/$$KFP_INDEXING_BASE_IMAGE_NAME:$$KFP_INDEXING_BASE_IMAGE_TAG" && \
 	ANALYSIS_IMG="$$KFP_IMAGE_REGISTRY/$$KFP_ANALYSIS_BASE_IMAGE_NAME:$$KFP_ANALYSIS_BASE_IMAGE_TAG" && \
+	TOOLS_IMG="$$KFP_IMAGE_REGISTRY/$$KFP_PIPELINE_TOOLS_IMAGE_NAME:$$KFP_PIPELINE_TOOLS_IMAGE_TAG" && \
 	\
 	echo "==> Building data generation image..." && \
 	podman build -t "$$DATAGEN_IMG" resources/images/data-generation && \
@@ -129,7 +144,12 @@ build-images:
 	echo "==> Building analysis image..." && \
 	podman build -t "$$ANALYSIS_IMG" resources/images/data-indexing && \
 	echo "==> Pushing analysis image..." && \
-	podman push "$$ANALYSIS_IMG"
+	podman push "$$ANALYSIS_IMG" && \
+	\
+	echo "==> Building pipeline-tools image..." && \
+	podman build -t "$$TOOLS_IMG"  resources/images/pipeline-tools && \
+	echo "==> Pushing pipeline-tools image..." && \
+	podman push "$$TOOLS_IMG"
 
 upload-pipelines:
 	@set -a && . $(ENV_FILE) && set +a && \
@@ -145,6 +165,9 @@ upload-pipelines:
 		--set requester="$$(oc whoami)" \
 		--set repoUrl="$(GIT_REPO_URL)" \
 		--set repoRef="$(GIT_REPO_BRANCH)" \
+		--set pipelineTools.image.registry="$$KFP_IMAGE_REGISTRY" \
+		--set pipelineTools.image.name="$$KFP_PIPELINE_TOOLS_IMAGE_NAME" \
+		--set pipelineTools.image.tag="$$KFP_PIPELINE_TOOLS_IMAGE_TAG" \
 		-s templates/upload-pipelines-job.yaml | oc apply -n $$KFP_NAMESPACE -f -
 
 upload-mlflow-assets:
@@ -159,6 +182,9 @@ upload-mlflow-assets:
 		--set requester="$$(oc whoami)" \
 		--set repoUrl="$(GIT_REPO_URL)" \
 		--set repoRef="$(GIT_REPO_BRANCH)" \
+		--set pipelineTools.image.registry="$$KFP_IMAGE_REGISTRY" \
+		--set pipelineTools.image.name="$$KFP_PIPELINE_TOOLS_IMAGE_NAME" \
+		--set pipelineTools.image.tag="$$KFP_PIPELINE_TOOLS_IMAGE_TAG" \
 		-s templates/upload-assets-job.yaml | oc apply -n $$KFP_NAMESPACE -f -
 
 run-adhoc-query:
@@ -200,7 +226,17 @@ run-pipelines:
 		--type=merge -p '{"stringData":{"GIT_REPO":"$(PIPELINE_GIT_REPO)"}}' || true && \
 	[ -n "$(PIPELINE_GIT_BRANCH)" ] && oc patch secret code-understanding-env -n $$KFP_NAMESPACE \
 		--type=merge -p '{"stringData":{"GIT_BRANCH":"$(PIPELINE_GIT_BRANCH)"}}' || true && \
-	\
+	REPO_LIST="$$GIT_REPO_LIST" && \
+	if [ -n "$$PIPELINE_GIT_REPO_LIST" ] && [ -f "$$PIPELINE_GIT_REPO_LIST" ]; then \
+		echo "==> PIPELINE_GIT_REPO_LIST is set, using instead of GIT_REPO_LIST"; \
+		REPO_LIST="$$PIPELINE_GIT_REPO_LIST"; \
+	fi && \
+	if [ -n "$$REPO_LIST" ] && [ -f "$$REPO_LIST" ]; then \
+		echo "$$REPO_LIST"; \
+		oc set data secret/code-understanding-env -n $$KFP_NAMESPACE \
+			--from-file=GIT_REPO_LIST_CONTENTS="$$REPO_LIST"; \
+		echo "$$REPO_LIST"; \
+	fi || true && \
 	echo "==> Submitting run-pipelines job..." && \
 	oc delete job run-pipelines -n $$KFP_NAMESPACE --ignore-not-found=true && \
 	helm template agent-mesh-for-sw resources/helm \
@@ -211,6 +247,9 @@ run-pipelines:
 		--set-string runPipelines.args="$${ARGS:---single-repo}" \
 		--set-string runPipelines.targetPath="$${KFP_DATA_GENERATION_OUTPUT_PATH:-target}" \
 		--set-string runPipelines.graphragSourcePath="$${KFP_DATA_INDEXING_OUTPUT_PATH:-graph_rag_app/source}" \
+		--set pipelineTools.image.registry="$$KFP_IMAGE_REGISTRY" \
+		--set pipelineTools.image.name="$$KFP_PIPELINE_TOOLS_IMAGE_NAME" \
+		--set pipelineTools.image.tag="$$KFP_PIPELINE_TOOLS_IMAGE_TAG" \
 		-s templates/run-pipelines-job.yaml | oc apply -n $$KFP_NAMESPACE -f - && \
 	\
 	echo "==> Waiting for run-pipelines container to start..." && \

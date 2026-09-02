@@ -18,27 +18,13 @@ class DefaultAssetLoader(AssetLoader):
 
             self._loader = LocalAssetLoader()
 
-    def download(self, asset_file_path: str, download_dir: str = None, experiment_name=None, asset_tags=None):
+    def download(self, asset_file_path: str, download_dir: str = None, **kwargs):
 
-        if isinstance(self._loader, MlFlowAssetLoader):
-            kwargs = {}
-            if experiment_name is not None:
-                kwargs["experiment_name"] = experiment_name
-            if asset_tags is not None:
-                kwargs["asset_tags"] = asset_tags
-            return self._loader.download(asset_file_path, download_dir, **kwargs)
-        return self._loader.download(asset_file_path, download_dir)
+        return self._loader.download(asset_file_path, download_dir, **kwargs)
 
-    def download_dir(self, asset_dir_path: str, download_dir: str, experiment_name=None, asset_tags=None):
+    def download_dir(self, asset_dir_path: str, download_dir: str, **kwargs):
 
-        if isinstance(self._loader, MlFlowAssetLoader):
-            kwargs = {}
-            if experiment_name is not None:
-                kwargs["experiment_name"] = experiment_name
-            if asset_tags is not None:
-                kwargs["asset_tags"] = asset_tags
-            return self._loader.download_dir(asset_dir_path, download_dir, **kwargs)
-        return self._loader.download_dir(asset_dir_path, download_dir)
+        return self._loader.download_dir(asset_dir_path, download_dir, **kwargs)
 
     def log_results(self, results_path: str, artifact_path: str = None, tags: dict = None,
                     content: str = None):

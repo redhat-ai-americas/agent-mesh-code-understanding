@@ -7,13 +7,12 @@ deployNotebooks: false
 repoUrl: ""
 repoRef: main
 
-tag: latest
-
 minio:
   rootUser: ""
   rootPassword: ""
   bucket: demo
   region: us-east-1
+  image: "quay.io/minio/minio:latest"
 
 dataGeneration:
   image:
@@ -43,6 +42,12 @@ analysis:
     tag: latest
   notebook:
     name: graphrag-analysis
+
+pipelineTools:
+  image:
+    registry: ""
+    name: pipeline-tools
+    tag: latest
 
 adhocQuery:
   run: false

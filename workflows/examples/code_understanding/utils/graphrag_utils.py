@@ -473,11 +473,6 @@ class DependencyAnalyzer:
     def extract_context_content(context_data) -> str:
         """Extracts and concatenates context text from GraphRAG context_data.
 
-        Tries the "reports" key first (community reports, "full_content" column).
-        Falls back to the "sources" key (text units, "text" column) when reports
-        are absent — which happens with local search on small codebases where no
-        community is topically relevant to the query.
-
         Args:
             context_data: The context_data dict returned by query_with_llm when
                 include_context=True.
