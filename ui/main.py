@@ -1,4 +1,4 @@
-"""FastAPI backend for the native Code Understanding OpenShift plugin."""
+"""FastAPI backend for the Code Understanding console."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ class FrameAncestorsMiddleware(BaseHTTPMiddleware):
         return response
 
 
-app = FastAPI(title="Code Understanding plugin API", docs_url=None, redoc_url=None)
+app = FastAPI(title="Code Understanding console", docs_url=None, redoc_url=None)
 app.add_middleware(FrameAncestorsMiddleware)
 app.add_middleware(
     CORSMiddleware,

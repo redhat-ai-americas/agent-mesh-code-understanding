@@ -25,6 +25,6 @@ spec:
   strategy:
     type: Docker
     dockerStrategy:
-      dockerfilePath: Dockerfile
+      dockerfilePath: Dockerfile.plugin
   triggers: []
 {{- end }}
