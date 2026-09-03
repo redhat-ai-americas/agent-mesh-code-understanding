@@ -36,7 +36,7 @@ class MlFlowAssetLoader(AssetLoader):
             _orig_send = requests.Session.send
 
             def _send_with_forwarded_token(self, request, **kwargs):
-                request.headers["X-Forwarded-Access-Token"] = _token
+                request.headers["Authorization"] = f"Bearer {_token}"
                 return _orig_send(self, request, **kwargs)
 
             requests.Session.send = _send_with_forwarded_token
