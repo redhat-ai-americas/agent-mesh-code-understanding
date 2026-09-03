@@ -19,7 +19,15 @@ spec:
           command:
             - sh
             - -c
-            - workflows/examples/code_understanding/scripts/upload_pipelines.sh
+            - |
+              set -euo pipefail
+              git config --global credential.helper '!f() { echo "username=${GIT_USERNAME}"; echo "password=${GIT_TOKEN}"; }; f'
+              git config --global --add safe.directory /opt/app-root/src
+              git init /opt/app-root/src
+              git -C /opt/app-root/src remote add origin "{{ .Values.repoUrl }}" 2>/dev/null || true
+              git -C /opt/app-root/src fetch --depth=1 origin "{{ .Values.repoRef }}"
+              git -C /opt/app-root/src reset --hard FETCH_HEAD
+              workflows/examples/code_understanding/scripts/upload_pipelines.sh
           workingDir: /opt/app-root/src
           env:
             - name: KFP_HOST
@@ -40,3 +48,9 @@ spec:
             - secretRef:
                 name: code-understanding-env
                 optional: true
+          volumeMounts:
+            - name: workspace
+              mountPath: /opt/app-root/src
+      volumes:
+        - name: workspace
+          emptyDir: {}
