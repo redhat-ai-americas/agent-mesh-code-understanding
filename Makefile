@@ -255,3 +255,95 @@ run-pipelines:
 	\
 	echo "==> Streaming pipeline run results..." && \
 	oc logs -f job/run-pipelines -n $$KFP_NAMESPACE
+
+PLUGIN_IMAGE ?= code-understanding-console-plugin:latest
+
+apply-plugin-src:
+	@set -a && . $(ENV_FILE) && set +a && \
+	echo "==> Publishing plugin job scripts ConfigMap..." && \
+	oc create configmap code-understanding-job-scripts \
+		--from-file=run_pipelines.sh=workflows/examples/code_understanding/scripts/run_pipelines.sh \
+		--from-file=mlflow_asset_loader.py=workflows/examples/code_understanding/loaders/mlflow_asset_loader.py \
+		--from-file=default_asset_loader.py=workflows/examples/code_understanding/loaders/default_asset_loader.py \
+		-n $$KFP_NAMESPACE --dry-run=client -o yaml | oc apply -f -
+
+build-console-plugin:
+	@echo "==> Installing and building OpenShift console plugin..." && \
+	cd console-plugin && npm install --no-audit --no-fund && npm run build
+
+build-console-plugin-image: build-console-plugin
+	@set -a && . $(ENV_FILE) && set +a && \
+	REGISTRY_HOST="$$(oc registry info 2>/dev/null || true)" && \
+	PLUGIN_IMAGE="image-registry.openshift-image-registry.svc:5000/$$KFP_NAMESPACE/code-understanding-console-plugin:latest" && \
+	CONTAINER_CMD="$$(command -v docker 2>/dev/null)" && \
+	if [ -n "$$CONTAINER_CMD" ] && $$CONTAINER_CMD info >/dev/null 2>&1; then \
+	  if [ -z "$$REGISTRY_HOST" ]; then echo "ERROR: oc registry login required."; exit 1; fi && \
+	  PLUGIN_IMAGE="$$REGISTRY_HOST/$$KFP_NAMESPACE/code-understanding-console-plugin:latest" && \
+	  echo "==> Building plugin image locally: $$PLUGIN_IMAGE" && \
+	  cd console-plugin && $$CONTAINER_CMD build --platform linux/amd64 -t "$$PLUGIN_IMAGE" . && \
+	  $$CONTAINER_CMD push "$$PLUGIN_IMAGE"; \
+	else \
+	  echo "==> Building plugin image on-cluster (no local container runtime)..." && \
+	  helm template agent-mesh-for-sw resources/helm \
+	    --set namespace="$$KFP_NAMESPACE" \
+	    --set consolePlugin.enabled=true \
+	    -s templates/console-plugin-build.yaml | oc apply -n $$KFP_NAMESPACE -f - && \
+	  oc start-build code-understanding-console-plugin --from-dir=console-plugin --follow -n $$KFP_NAMESPACE; \
+	fi && \
+	echo "$$PLUGIN_IMAGE" > console-plugin/.plugin-image.ref
+
+build-plugin-api-image:
+	@set -a && . $(ENV_FILE) && set +a && \
+	echo "==> Building FastAPI console image on-cluster..." && \
+	helm template agent-mesh-for-sw resources/helm \
+	  --set namespace="$$KFP_NAMESPACE" \
+	  --set consolePlugin.enabled=true \
+	  -s templates/console-plugin-api-build.yaml | oc apply -n $$KFP_NAMESPACE -f - && \
+	oc start-build code-understanding-plugin-api --from-dir=ui --follow -n $$KFP_NAMESPACE
+
+deploy-console-plugin: apply-plugin-src build-console-plugin-image build-plugin-api-image
+	@set -a && . $(ENV_FILE) && set +a && \
+	CONSOLE_HOST="$$(oc get route console -n openshift-console -o jsonpath='{.spec.host}')" && \
+	CLUSTER_DOMAIN="$$(oc get ingress.config cluster -o jsonpath='{.spec.domain}')" && \
+	echo "==> Deploying OpenShift console plugin and FastAPI backend..." && \
+	helm template agent-mesh-for-sw resources/helm \
+		--set namespace="$$KFP_NAMESPACE" \
+		--set repoUrl="$(GIT_REPO_URL)" \
+		--set repoRef="$(GIT_REPO_BRANCH)" \
+		--set clusterDomain="$$CLUSTER_DOMAIN" \
+		--set consolePlugin.enabled=true \
+		--set consolePlugin.consoleBaseUrl="https://$$CONSOLE_HOST" \
+		-s templates/console-plugin-api.yaml | oc apply -f - && \
+	API_HOST="$$(oc get route code-understanding-plugin-api -n $$KFP_NAMESPACE -o jsonpath='{.spec.host}')" && \
+	helm template agent-mesh-for-sw resources/helm \
+		--set namespace="$$KFP_NAMESPACE" \
+		--set repoUrl="$(GIT_REPO_URL)" \
+		--set repoRef="$(GIT_REPO_BRANCH)" \
+		--set clusterDomain="$$CLUSTER_DOMAIN" \
+		--set consolePlugin.enabled=true \
+		--set consolePlugin.consoleBaseUrl="https://$$CONSOLE_HOST" \
+		--set consolePlugin.apiRouteHost="$$API_HOST" \
+		-s templates/console-plugin.yaml | oc apply -f - && \
+	oc rollout restart deployment/code-understanding-console-plugin -n $$KFP_NAMESPACE && \
+	oc rollout restart deployment/code-understanding-plugin-api -n $$KFP_NAMESPACE && \
+	oc rollout status deployment/code-understanding-console-plugin -n $$KFP_NAMESPACE --timeout=300s && \
+	oc rollout status deployment/code-understanding-plugin-api -n $$KFP_NAMESPACE --timeout=300s && \
+	$(MAKE) enable-console-plugin
+
+enable-console-plugin:
+	@set -a && . $(ENV_FILE) && set +a && \
+	echo "==> Enabling code-understanding-console in OpenShift console..." && \
+	EXISTING="$$(oc get consoles.operator.openshift.io cluster -o jsonpath='{.spec.plugins}' 2>/dev/null)" && \
+	if echo "$$EXISTING" | grep -q 'code-understanding-console'; then \
+	  echo "Plugin already enabled."; \
+	else \
+	  oc patch consoles.operator.openshift.io cluster --type=json \
+	    -p='[{"op":"add","path":"/spec/plugins/-","value":"code-understanding-console"}]' && \
+	  echo "Plugin enabled. Console may take 1-2 minutes to reload."; \
+	fi && \
+	CONSOLE_HOST="$$(oc get route console -n openshift-console -o jsonpath='{.spec.host}')" && \
+	echo "" && \
+	echo "==> Open in OpenShift console:" && \
+	echo "    https://$$CONSOLE_HOST/code-understanding" && \
+	echo "    Application launcher: Code Understanding" && \
+	echo ""
