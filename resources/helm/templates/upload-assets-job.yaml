@@ -36,7 +36,7 @@ spec:
             - name: MLFLOW_WORKSPACE
               value: "{{ .Values.namespace }}"
             - name: MLFLOW_TRACKING_AUTH
-              value: "kubernetes-namespaced"
+              value: "kubernetes"
           envFrom:
             - secretRef:
                 name: code-understanding-env
