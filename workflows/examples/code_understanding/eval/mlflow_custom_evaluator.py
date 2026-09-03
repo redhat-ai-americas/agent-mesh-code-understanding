@@ -49,6 +49,8 @@ class MlFlowCustomEvaluator(CustomEvaluator):
 
             requests.Session.send = _send_with_forwarded_token
 
+        os.environ.pop("MLFLOW_WORKSPACE", None)
+
     def _judge_model_uri(self) -> str:
         """Returns the MLflow judge model URI, using an OpenAI-compatible endpoint."""
         judge_id = os.getenv("JUDGE_LLM_ID")
