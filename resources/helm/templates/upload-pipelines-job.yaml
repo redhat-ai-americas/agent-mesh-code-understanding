@@ -31,7 +31,7 @@ spec:
             - name: MLFLOW_TRACKING_INSECURE_TLS
               value: "true"
             - name: MLFLOW_TRACKING_AUTH
-              value: "kubernetes"
+              value: "kubernetes-namespaced"
             - name: AGENTMESH_REPO_URL
               value: "{{ .Values.repoUrl }}"
             - name: AGENTMESH_REPO_REF
