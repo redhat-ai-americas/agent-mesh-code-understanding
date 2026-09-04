@@ -63,3 +63,9 @@ runPipelines:
   args: "--single"
   targetPath: "target"
   graphragSourcePath: "graph_rag_app/source"
+
+console:
+  enabled: true
+  replicas: 1
+  image: ""
+  imagePullPolicy: Always

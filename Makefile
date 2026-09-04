@@ -40,7 +40,8 @@ install:
 		--set pipelineTools.image.registry="$$KFP_IMAGE_REGISTRY" \
 		--set pipelineTools.image.name="$$KFP_PIPELINE_TOOLS_IMAGE_NAME" \
 		--set pipelineTools.image.tag="$$KFP_PIPELINE_TOOLS_IMAGE_TAG" \
-		--set clusterDomain="$(CLUSTER_DOMAIN)"
+		--set clusterDomain="$(CLUSTER_DOMAIN)" \
+		--set console.enabled=false
 	$(MAKE) apply-secrets
 	@set -a && . $(ENV_FILE) && set +a && \
 	if [ "$$ASSET_LOADER" = "mlflow" ]; then \
@@ -49,6 +50,7 @@ install:
 	fi
 	$(MAKE) upload-pipelines
 	$(MAKE) deploy-notebooks
+	$(MAKE) deploy-console
 
 deploy-notebooks:
 	@set -a && . $(ENV_FILE) && set +a && \
@@ -255,3 +257,54 @@ run-pipelines:
 	\
 	echo "==> Streaming pipeline run results..." && \
 	oc logs -f job/run-pipelines -n $$KFP_NAMESPACE
+
+apply-console-src:
+	@set -a && . $(ENV_FILE) && set +a && \
+	echo "==> Publishing job scripts ConfigMap..." && \
+	oc create configmap code-understanding-job-scripts \
+		--from-file=run_pipelines.sh=workflows/examples/code_understanding/scripts/run_pipelines.sh \
+		--from-file=mlflow_asset_loader.py=workflows/examples/code_understanding/loaders/mlflow_asset_loader.py \
+		--from-file=default_asset_loader.py=workflows/examples/code_understanding/loaders/default_asset_loader.py \
+		-n $$KFP_NAMESPACE --dry-run=client -o yaml | oc apply -f -
+
+build-console-image:
+	@set -a && . $(ENV_FILE) && set +a && \
+	echo "==> Building Code Understanding console image on-cluster..." && \
+	helm template agent-mesh-for-sw resources/helm \
+	  --set namespace="$$KFP_NAMESPACE" \
+	  --set console.enabled=true \
+	  -s templates/console-build.yaml | oc apply -n $$KFP_NAMESPACE -f - && \
+	oc start-build code-understanding-console --from-dir=ui --follow -n $$KFP_NAMESPACE
+
+run-console:
+	@set -a && . $(ENV_FILE) && set +a && \
+	AGENTMESH_REPO_URL="$(GIT_REPO_URL)" AGENTMESH_REPO_REF="$(GIT_REPO_BRANCH)" \
+	KFP_NAMESPACE="$$KFP_NAMESPACE" \
+	python3 -m pip install --quiet -r ui/requirements.txt && \
+	python3 -m uvicorn --app-dir ui main:app --host 127.0.0.1 --port 8080
+
+deploy-console: apply-console-src build-console-image
+	@set -a && . $(ENV_FILE) && set +a && \
+	echo "==> Deploying Code Understanding console..." && \
+	helm template agent-mesh-for-sw resources/helm \
+		--set namespace="$$KFP_NAMESPACE" \
+		--set requester="$$(oc whoami)" \
+		--set repoUrl="$(GIT_REPO_URL)" \
+		--set repoRef="$(GIT_REPO_BRANCH)" \
+		--set console.enabled=true \
+		-s templates/console.yaml | oc apply -n $$KFP_NAMESPACE -f - && \
+	oc rollout restart deployment/code-understanding-console -n $$KFP_NAMESPACE && \
+	oc rollout status deployment/code-understanding-console -n $$KFP_NAMESPACE --timeout=300s && \
+	ROUTE_HOST="$$(oc get route code-understanding-console -n $$KFP_NAMESPACE -o jsonpath='{.spec.host}')" && \
+	echo "" && \
+	echo "==> Open the console in your browser:" && \
+	echo "    https://$$ROUTE_HOST" && \
+	echo "" && \
+	echo "    Namespace access is enough; this is a Kubernetes Deployment, not an OpenShift console plugin." && \
+	echo "    Or run: make port-forward-console  then open http://localhost:8080" && \
+	echo ""
+
+port-forward-console:
+	@set -a && . $(ENV_FILE) && set +a && \
+	echo "==> Forwarding http://localhost:8080 -> code-understanding-console:8080" && \
+	oc port-forward svc/code-understanding-console 8080:8080 -n $$KFP_NAMESPACE
