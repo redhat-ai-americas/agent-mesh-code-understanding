@@ -1,0 +1,40 @@
+replicaCount: 1
+
+image:
+  repository: vllm/vllm-openai
+  tag: v0.19.0
+  pullPolicy: IfNotPresent
+
+model:
+  name: intfloat/e5-mistral-7b-instruct
+  maxModelLen: 8192
+  gpuMemoryUtilization: "0.90"
+
+resources:
+  requests:
+    cpu: "2"
+    memory: 16Gi
+    nvidia.com/gpu: "1"
+  limits:
+    cpu: "4"
+    memory: 48Gi
+    nvidia.com/gpu: "1"
+
+nodeSelector: {}
+
+tolerations:
+  - key: g5-gpu
+    operator: Equal
+    value: "true"
+    effect: NoSchedule
+  - key: g6e-gpu
+    operator: Equal
+    value: "true"
+    effect: NoSchedule
+
+cache:
+  storageClassName: gp3-csi
+  accessMode: ReadWriteOnce
+  size: 50Gi
+
+shmSize: 8Gi
