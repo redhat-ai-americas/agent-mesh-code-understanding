@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -9,11 +10,13 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from starlette.background import BackgroundTask
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 import catalog
 import cluster
+import downloads
 import indexes
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -87,6 +90,47 @@ def get_indexes() -> dict[str, Any]:
     catalog_entries = catalog.load_catalog()
     options = indexes.queryable_repos(data.get("indexes") or [], catalog_entries)
     return {**data, "queryable": options}
+
+
+@app.get("/api/indexes/{run_id}/download")
+def download_index(run_id: str) -> FileResponse:
+    """Stream a validated GraphRAG index bundle to the browser."""
+    if os.getenv("ASSET_LOADER", "local").strip().lower() != "mlflow":
+        raise HTTPException(
+            status_code=503,
+            detail="Index downloads require ASSET_LOADER=mlflow in code-understanding-env.",
+        )
+
+    try:
+        client = indexes.create_mlflow_client()
+        metadata = indexes.validate_index_run(client, run_id)
+    except indexes.IndexRunValidationError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Unable to validate MLflow index run: {exc}") from exc
+
+    workspace = downloads.create_download_workspace()
+    try:
+        archive_path, filename = downloads.create_index_archive(
+            client,
+            metadata,
+            workspace,
+            downloads.configured_max_download_bytes(),
+        )
+    except Exception as exc:
+        downloads.cleanup_download_workspace(workspace)
+        if isinstance(exc, downloads.DownloadTooLargeError):
+            raise HTTPException(status_code=413, detail=str(exc)) from exc
+        if isinstance(exc, FileNotFoundError):
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail=f"Unable to download MLflow index artifact: {exc}") from exc
+
+    return FileResponse(
+        path=archive_path,
+        media_type="application/gzip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        background=BackgroundTask(downloads.cleanup_download_workspace, workspace),
+    )
 
 
 @app.get("/api/jobs")

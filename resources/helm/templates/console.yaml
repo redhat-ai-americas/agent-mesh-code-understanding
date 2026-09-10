@@ -38,10 +38,15 @@ spec:
               value: "main"
             - name: PYTHONUNBUFFERED
               value: "1"
+            - name: INDEX_DOWNLOAD_MAX_BYTES
+              value: "{{ .Values.console.downloadMaxBytes }}"
           envFrom:
             - secretRef:
                 name: code-understanding-env
                 optional: true
+          volumeMounts:
+            - name: console-tmp
+              mountPath: /tmp
           readinessProbe:
             httpGet:
               path: /api/health
@@ -58,9 +63,15 @@ spec:
             requests:
               cpu: 100m
               memory: 256Mi
+              ephemeral-storage: {{ .Values.console.ephemeralStorage.request }}
             limits:
               cpu: "1"
               memory: 1Gi
+              ephemeral-storage: {{ .Values.console.ephemeralStorage.limit }}
+      volumes:
+        - name: console-tmp
+          emptyDir:
+            sizeLimit: {{ .Values.console.ephemeralStorage.limit }}
 ---
 apiVersion: v1
 kind: Service

@@ -8,7 +8,7 @@ WORKDIR /opt/app-root/src
 
 COPY pyproject.toml .
 COPY uv.lock .
-RUN uv sync --frozen --no-install-project
+RUN uv sync --frozen --no-install-project --no-dev
 
 COPY . .
 

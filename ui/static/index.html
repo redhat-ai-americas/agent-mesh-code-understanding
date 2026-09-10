@@ -93,7 +93,7 @@
 
     .cu-index-card {
       display: grid;
-      grid-template-columns: 0.55rem minmax(0, 1fr);
+      grid-template-columns: 0.55rem minmax(0, 1fr) auto;
       gap: 0.7rem;
       align-items: start;
       background: #fff;
@@ -117,6 +117,28 @@
       font-size: 0.88rem;
       line-height: 1.3;
       word-break: break-word;
+    }
+    .cu-index-card > div { min-width: 0; }
+    .cu-index-download {
+      min-height: 1.8rem;
+      min-width: 1.8rem;
+      padding: 0.25rem;
+      font-size: 0.78rem;
+      align-self: center;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 3px;
+    }
+    .cu-index-download svg {
+      width: 1rem;
+      height: 1rem;
+      pointer-events: none;
+    }
+    .cu-index-download .cu-spinner {
+      width: 1rem;
+      height: 1rem;
+      border-width: 2px;
     }
     .cu-index-meta {
       display: flex;
@@ -441,7 +463,7 @@
         </div>
         <div class="cu-progress"><span></span></div>
       </div>
-      <div id="banner"></div>
+      <div id="banner" role="status" aria-live="polite"></div>
       <div class="cu-tabs">
         <button type="button" class="active" data-tab="repos">Repositories</button>
         <button type="button" data-tab="pipelines">Run pipelines</button>
@@ -579,7 +601,10 @@
     }
 
     const banner = (msg, danger) => {
-      $("banner").innerHTML = msg
+      const target = $("banner");
+      target.setAttribute("role", danger ? "alert" : "status");
+      target.setAttribute("aria-live", danger ? "assertive" : "polite");
+      target.innerHTML = msg
         ? `<div class="cu-note" style="${danger ? "" : "background:#e7f1fa;border-left-color:#0066cc"}">${esc(msg)}</div>`
         : "";
     };
@@ -636,6 +661,9 @@
     }
 
     function indexCard(item) {
+      const download = item.run_id
+        ? `<button type="button" class="cu-btn cu-btn-secondary cu-index-download" data-index-download="${esc(item.run_id)}" aria-label="Download index" title="Download index"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg></button>`
+        : "";
       if (item.multi_repo) {
         return `<article class="cu-index-card multi">
           <span class="cu-index-dot"></span>
@@ -646,6 +674,7 @@
               ${item.indexed_at ? `<span class="cu-chip">${esc(prettyDate(item.indexed_at))}</span>` : ""}
             </div>
           </div>
+          ${download}
         </article>`;
       }
       const match = state.repos.find((r) => gitSlug(r.git_repo, r.git_branch) === item.git_slug);
@@ -665,7 +694,63 @@
             ${item.indexed_at ? `<span class="cu-chip">${esc(prettyDate(item.indexed_at))}</span>` : ""}
           </div>
         </div>
+        ${download}
       </article>`;
+    }
+
+    function bindDownloadButtons() {
+      $("indexes").querySelectorAll("[data-index-download]").forEach((button) => {
+        button.addEventListener("click", () => downloadIndex(button.dataset.indexDownload, button));
+      });
+    }
+
+    function responseFilename(response, runId) {
+      const disposition = response.headers.get("Content-Disposition") || "";
+      const match = disposition.match(/filename="([^"]+)"/i) || disposition.match(/filename=([^;]+)/i);
+      return match ? match[1].trim() : `index-${runId}.tar.gz`;
+    }
+
+    async function downloadIndex(runId, button) {
+      if (!runId || button.disabled) return;
+      const originalContent = button.innerHTML;
+      const originalTitle = button.getAttribute("title");
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+      button.setAttribute("aria-label", "Preparing index download");
+      button.setAttribute("title", "Preparing index download…");
+      button.innerHTML = '<span class="cu-spinner" aria-hidden="true"></span>';
+      banner("Preparing index download…", false);
+      try {
+        const response = await fetch(`/api/indexes/${encodeURIComponent(runId)}/download`);
+        if (!response.ok) {
+          const body = await response.text();
+          let message = body || response.statusText;
+          try { message = JSON.parse(body).detail || message; } catch (_) { /* plain-text error */ }
+          throw new Error(message);
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = responseFilename(response, runId);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+        banner("Download started.", false);
+      } catch (e) {
+        banner(String(e.message || e), true);
+      } finally {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+        button.setAttribute("aria-label", "Download index");
+        if (originalTitle === null) {
+          button.removeAttribute("title");
+        } else {
+          button.setAttribute("title", originalTitle);
+        }
+        button.innerHTML = originalContent;
+      }
     }
 
     function jobCard(job) {
@@ -761,6 +846,7 @@
         $("indexes").innerHTML = state.indexes.length
           ? state.indexes.map(indexCard).join("")
           : `<p class="cu-muted">${esc(indexes.message || "No indexes yet.")}</p>`;
+        bindDownloadButtons();
         $("jobs").innerHTML = (jobs.jobs || []).length
           ? jobs.jobs.map(jobCard).join("")
           : `<p class="cu-muted">No jobs yet.</p>`;

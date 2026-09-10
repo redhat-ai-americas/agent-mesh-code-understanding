@@ -79,3 +79,7 @@ console:
   replicas: 1
   image: ""
   imagePullPolicy: Always
+  downloadMaxBytes: 5368709120
+  ephemeralStorage:
+    request: 10Gi
+    limit: 12Gi
