@@ -329,8 +329,7 @@ run-console:
 	@set -a && . $(ENV_FILE) && set +a && \
 	AGENTMESH_REPO_URL="$(GIT_REPO_URL)" AGENTMESH_REPO_REF="$(GIT_REPO_BRANCH)" \
 	KFP_NAMESPACE="$$KFP_NAMESPACE" \
-	python3 -m pip install --quiet -r ui/requirements.txt && \
-	python3 -m uvicorn --app-dir ui main:app --host 127.0.0.1 --port 8080
+	uv run --project ui --frozen uvicorn --app-dir ui main:app --host 127.0.0.1 --port 8080
 
 deploy-console: apply-console-src build-console-image
 	@set -a && . $(ENV_FILE) && set +a && \
