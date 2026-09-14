@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import posixpath
 import re
 import tarfile
-from typing import Any
+from typing import Any, BinaryIO
 
 
 class IndexArchiveError(ValueError):
@@ -18,22 +19,31 @@ class IndexArchiveTooLargeError(IndexArchiveError):
     """Raised when compressed or extracted upload data exceeds the limit."""
 
 
-def save_uploaded_archive(upload: Any, workspace: Path, max_bytes: int) -> Path:
-    """Copy an upload into its isolated workspace while enforcing its size."""
-    archive_path = workspace / "upload.tar.gz"
-    total = 0
-    with archive_path.open("xb") as target:
-        while True:
-            chunk = upload.file.read(1024 * 1024)
-            if not chunk:
-                break
-            total += len(chunk)
-            if total > max_bytes:
-                raise IndexArchiveTooLargeError(
-                    f"Uploaded archive exceeds the maximum size of {max_bytes} bytes."
-                )
-            target.write(chunk)
-    return archive_path
+ArchiveSource = Path | str | os.PathLike[str] | BinaryIO
+
+
+def _open_archive(source: ArchiveSource, max_bytes: int) -> tarfile.TarFile:
+    if isinstance(source, (str, bytes, os.PathLike)):
+        archive_path = Path(source)
+        archive_size = archive_path.stat().st_size
+        if archive_size > max_bytes:
+            raise IndexArchiveTooLargeError(
+                f"Uploaded archive exceeds the maximum size of {max_bytes} bytes."
+            )
+        return tarfile.open(name=os.fspath(archive_path), mode="r:gz")
+
+    try:
+        source.seek(0, 2)
+        archive_size = source.tell()
+        source.seek(0)
+    except (AttributeError, OSError, TypeError):
+        source.seek(0)
+    else:
+        if archive_size > max_bytes:
+            raise IndexArchiveTooLargeError(
+                f"Uploaded archive exceeds the maximum size of {max_bytes} bytes."
+            )
+    return tarfile.open(fileobj=source, mode="r:gz")
 
 
 def _member_path(member_name: str) -> str:
@@ -82,13 +92,13 @@ def validate_bundle_manifest(value: Any) -> dict[str, Any]:
 
 
 def extract_uploaded_index(
-    archive_path: Path,
+    archive_source: ArchiveSource,
     destination: Path,
     max_bytes: int,
 ) -> dict[str, Any]:
     """Inspect then safely extract a bundle, bounded by regular-file content."""
     try:
-        with tarfile.open(archive_path, mode="r:gz") as archive:
+        with _open_archive(archive_source, max_bytes) as archive:
             members = archive.getmembers()
             seen: set[str] = set()
             manifest_member: tarfile.TarInfo | None = None

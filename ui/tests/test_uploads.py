@@ -19,6 +19,19 @@ def test_extracts_index_bundle(tmp_path):
     assert (tmp_path / "artifact" / "index.bin").read_bytes() == b"data"
 
 
+def test_extracts_index_bundle_from_file_object(tmp_path):
+    archive_path = make_index_bundle(tmp_path / "index.tar.gz")
+
+    with archive_path.open("rb") as source:
+        metadata = uploads.extract_uploaded_index(
+            source,
+            tmp_path / "artifact",
+            1024,
+        )
+
+    assert metadata == {"git_slug": "acme-widget-main", "multi_repo": False}
+
+
 @pytest.mark.parametrize(
     ("manifest", "message"),
     [

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -7,6 +9,7 @@ import pytest
 pytest.importorskip("fastapi")
 pytest.importorskip("kubernetes")
 from fastapi.testclient import TestClient
+from starlette.middleware.body_limit import RequestBodyLimitMiddleware
 
 import main
 from archive_helpers import make_index_bundle
@@ -149,4 +152,41 @@ def test_upload_api_enforces_archive_size_limit(monkeypatch, tmp_path, upload_wo
     response = post_bundle(make_index_bundle(tmp_path / "index.tar.gz"))
 
     assert response.status_code == 413
+    assert upload_workspaces == []
+
+
+def test_upload_request_body_limit_is_configured():
+    middleware = next(
+        item for item in main.app.user_middleware if item.cls is RequestBodyLimitMiddleware
+    )
+
+    assert middleware.kwargs["max_body_size"] == (
+        main.index_storage.DEFAULT_MAX_INDEX_BYTES + main.MULTIPART_OVERHEAD_BYTES
+    )
+
+
+def test_upload_api_is_sync_and_passes_parsed_file_directly(
+    monkeypatch,
+    tmp_path,
+    upload_workspaces,
+):
+    client = UploadClient()
+    configure_fake_mlflow(monkeypatch, client)
+    sources = []
+
+    def extract(source, destination, max_bytes):
+        sources.append(source)
+        assert not isinstance(source, Path)
+        assert hasattr(source, "read")
+        assert source.tell() == 0
+        destination.mkdir()
+        return {"git_slug": "acme-widget-main", "multi_repo": False}
+
+    monkeypatch.setattr(main.uploads, "extract_uploaded_index", extract)
+
+    response = post_bundle(make_index_bundle(tmp_path / "index.tar.gz"))
+
+    assert not inspect.iscoroutinefunction(main.upload_index)
+    assert response.status_code == 200
+    assert len(sources) == 1
     assert not upload_workspaces[0].exists()
