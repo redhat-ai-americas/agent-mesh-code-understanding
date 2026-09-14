@@ -116,8 +116,6 @@ def _download_index_directory(
 
 def _write_manifest(path: Path, metadata: dict[str, Any]) -> None:
     manifest = {
-        "format": "agent-mesh-code-understanding-index",
-        "version": 1,
         "run_id": metadata["run_id"],
         "git_slug": metadata["git_slug"],
         "multi_repo": bool(metadata["multi_repo"]),

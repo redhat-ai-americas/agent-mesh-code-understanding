@@ -14,20 +14,22 @@ def make_run(
     category: str = "indexing",
     git_slug: str = "acme-widget-main",
     multi_repo: str = "false",
+    uploaded: str = "false",
+    start_time: int = 1_700_000_000_000,
 ):
+    tags = {
+        "category": category,
+        "git_slug": git_slug,
+        "multi_repo": multi_repo,
+        "uploaded": uploaded,
+    }
     return SimpleNamespace(
         info=SimpleNamespace(
             run_id=run_id,
             experiment_id=experiment_id,
-            start_time=1_700_000_000_000,
+            start_time=start_time,
         ),
-        data=SimpleNamespace(
-            tags={
-                "category": category,
-                "git_slug": git_slug,
-                "multi_repo": multi_repo,
-            }
-        ),
+        data=SimpleNamespace(tags=tags),
     )
 
 
@@ -65,6 +67,7 @@ def test_successful_run_validation(monkeypatch):
         "run_id": "run-1",
         "git_slug": "acme-widget-main",
         "multi_repo": False,
+        "uploaded": False,
         "indexed_at": "2023-11-14T22:13:20+00:00",
         "artifact_path": "results/datasets/repos/acme-widget-main",
     }
@@ -91,4 +94,36 @@ def test_multi_repository_metadata_uses_fixed_artifact_path(monkeypatch):
     metadata = indexes.validate_index_run(FakeClient(run), "run-1")
 
     assert metadata["multi_repo"] is True
+    assert metadata["uploaded"] is False
     assert metadata["artifact_path"] == "results/datasets/repos/multi-repo"
+
+
+def test_uploaded_run_metadata_exposes_upload_tag(monkeypatch):
+    monkeypatch.setenv("MLFLOW_WORKSPACE", "workspace")
+    metadata = indexes.validate_index_run(
+        FakeClient(make_run(uploaded="true")),
+        "run-1",
+    )
+
+    assert metadata["uploaded"] is True
+
+
+def test_discovery_keeps_newest_run_for_slug(monkeypatch):
+    class DiscoveryClient:
+        def get_experiment_by_name(self, name):
+            return SimpleNamespace(experiment_id="7")
+
+        def search_runs(self, **kwargs):
+            assert kwargs["order_by"] == ["attributes.start_time DESC"]
+            return [
+                make_run("new", uploaded="true", start_time=1_700_000_001_000),
+                make_run("old", start_time=1_700_000_000_000),
+            ]
+
+    monkeypatch.setenv("ASSET_LOADER", "mlflow")
+    monkeypatch.setenv("MLFLOW_WORKSPACE", "workspace")
+    monkeypatch.setattr(indexes, "create_mlflow_client", DiscoveryClient)
+    data = indexes.list_indexed_repos()
+
+    assert [item["run_id"] for item in data["indexes"]] == ["new"]
+    assert data["indexes"][0]["uploaded"] is True

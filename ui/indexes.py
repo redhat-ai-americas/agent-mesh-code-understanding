@@ -12,10 +12,19 @@ from catalog import git_slug
 RESULT_DIRECTORY_EXPERIMENT_SUFFIX = "/code-refactoring/assets/result-directories"
 INDEX_ARTIFACT_ROOT = "results/datasets/repos"
 MULTI_REPO_ARTIFACT_PATH = f"{INDEX_ARTIFACT_ROOT}/multi-repo"
+UPLOADED_TAG = "uploaded"
 
 
 class IndexRunValidationError(LookupError):
     """Raised when an MLflow run cannot be used as a downloadable index."""
+
+
+class MlflowUnavailableError(RuntimeError):
+    """Raised when the configured MLflow service cannot be reached."""
+
+
+class MlflowUploadError(RuntimeError):
+    """Raised when an otherwise available MLflow service cannot log an upload."""
 
 
 def result_directory_experiment_name(workspace: str | None = None) -> str:
@@ -53,6 +62,7 @@ def _run_index_metadata(run: Any) -> dict[str, Any]:
     tags = getattr(getattr(run, "data", None), "tags", None) or {}
     slug = str(tags.get("git_slug") or "")
     multi = _as_bool(tags.get("multi_repo"))
+    uploaded = _as_bool(tags.get(UPLOADED_TAG))
     try:
         artifact_path = index_artifact_path(slug, multi_repo=multi)
     except ValueError as exc:
@@ -63,6 +73,7 @@ def _run_index_metadata(run: Any) -> dict[str, Any]:
     return {
         "git_slug": slug,
         "multi_repo": multi,
+        "uploaded": uploaded,
         "run_id": str(getattr(run_info, "run_id", "")),
         "indexed_at": datetime.fromtimestamp(started / 1000, tz=timezone.utc).isoformat()
         if started
@@ -75,7 +86,7 @@ def _public_index_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     """Return index fields needed by the browser without exposing artifact layout."""
     return {
         key: metadata[key]
-        for key in ("git_slug", "multi_repo", "run_id", "indexed_at")
+        for key in ("git_slug", "multi_repo", "uploaded", "run_id", "indexed_at")
     }
 
 
@@ -115,6 +126,58 @@ def create_mlflow_client() -> Any:
         os.environ["MLFLOW_TRACKING_TOKEN"] = Path(token_path).read_text(encoding="utf-8").strip()
 
     return MlflowClient()
+
+
+def _result_directory_experiment(client: Any) -> Any:
+    """Find or create the experiment used for result-directory artifacts."""
+    name = result_directory_experiment_name()
+    try:
+        experiment = client.get_experiment_by_name(name)
+        if experiment is None:
+            client.create_experiment(name)
+            experiment = client.get_experiment_by_name(name)
+    except Exception as exc:
+        raise MlflowUnavailableError(f"Unable to access MLflow experiment {name}: {exc}") from exc
+    if experiment is None:
+        raise MlflowUnavailableError(f"Unable to create MLflow experiment: {name}")
+    return experiment
+
+
+def log_uploaded_index(client: Any, metadata: dict[str, Any], directory: Path) -> dict[str, Any]:
+    """Store a validated extracted bundle in a fresh indexing MLflow run."""
+    experiment = _result_directory_experiment(client)
+    tags = {
+        "category": "indexing",
+        "git_slug": str(metadata["git_slug"]),
+        "multi_repo": str(bool(metadata["multi_repo"])),
+        UPLOADED_TAG: "true",
+    }
+    run_id = ""
+    try:
+        run = client.create_run(experiment.experiment_id, tags=tags)
+        run_id = str(run.info.run_id)
+        client.log_artifacts(
+            run_id,
+            str(directory),
+            artifact_path=index_artifact_path(metadata["git_slug"], metadata["multi_repo"]),
+        )
+        if hasattr(client, "set_terminated"):
+            client.set_terminated(run_id, status="FINISHED")
+    except Exception as exc:
+        if run_id and hasattr(client, "delete_run"):
+            try:
+                client.delete_run(run_id)
+            except Exception:
+                pass
+        raise MlflowUploadError(f"Unable to upload index artifact to MLflow: {exc}") from exc
+
+    return {
+        "git_slug": tags["git_slug"],
+        "multi_repo": bool(metadata["multi_repo"]),
+        "uploaded": True,
+        "run_id": run_id,
+        "indexed_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def list_indexed_repos() -> dict[str, Any]:

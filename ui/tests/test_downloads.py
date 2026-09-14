@@ -61,8 +61,6 @@ def test_archive_contains_manifest_and_index_files(tmp_path):
         assert "lancedb/part-0001.bin" in names
         manifest = json.load(archive.extractfile("manifest.json"))
 
-    assert manifest["format"] == "agent-mesh-code-understanding-index"
-    assert manifest["version"] == 1
     assert manifest["run_id"] == "run-1"
     assert manifest["git_slug"] == "acme-widget-main"
     assert manifest["multi_repo"] is False

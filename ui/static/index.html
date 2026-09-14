@@ -149,6 +149,19 @@
     }
     .cu-index-owner { color: var(--cu-gray); font-size: 0.75rem; }
 
+    .cu-index-upload {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      margin-top: 0.75rem;
+    }
+    .cu-index-upload .cu-btn { width: 100%; }
+    .cu-index-upload-status {
+      min-height: 1.25rem;
+      margin: 0;
+    }
+    .cu-index-upload-status.cu-error { color: var(--cu-red-dark); }
+
     .cu-job-card {
       display: grid;
       grid-template-columns: 0.55rem minmax(0, 1fr) auto;
@@ -290,6 +303,7 @@
       color: #363636;
     }
     .cu-chip.indexed { background: #e9f7e9; color: var(--cu-green); }
+    .cu-chip.uploaded { background: #fff3cd; color: #795600; }
     .cu-chip.default { background: #fce8e8; color: var(--cu-red-dark); }
 
     .cu-custom {
@@ -449,6 +463,13 @@
       <div id="status" class="cu-status">Checking cluster access…</div>
       <h2>Indexed repositories</h2>
       <div id="indexes" class="cu-rail-list"></div>
+      <div class="cu-index-upload">
+        <input id="index-upload-file" type="file" accept=".tar.gz,application/gzip,application/x-gzip" hidden />
+        <button type="button" class="cu-btn cu-btn-secondary" id="upload-index">Upload index</button>
+        <p id="index-upload-status" class="cu-muted cu-index-upload-status" role="status" aria-live="polite">
+          Upload a .tar.gz index bundle.
+        </p>
+      </div>
       <h2>Recent jobs</h2>
       <div id="jobs" class="cu-rail-list"></div>
     </aside>
@@ -671,6 +692,7 @@
             <div class="cu-index-title">Combined multi-repo index</div>
             <div class="cu-index-meta">
               <span class="cu-chip indexed">ready</span>
+              ${item.uploaded ? '<span class="cu-chip uploaded">uploaded</span>' : ""}
               ${item.indexed_at ? `<span class="cu-chip">${esc(prettyDate(item.indexed_at))}</span>` : ""}
             </div>
           </div>
@@ -691,6 +713,7 @@
             ${owner ? `<span class="cu-index-owner">${esc(owner)}</span>` : ""}
             ${branch ? `<span class="cu-chip">${esc(branch)}</span>` : ""}
             <span class="cu-chip indexed">indexed</span>
+            ${item.uploaded ? '<span class="cu-chip uploaded">uploaded</span>' : ""}
             ${item.indexed_at ? `<span class="cu-chip">${esc(prettyDate(item.indexed_at))}</span>` : ""}
           </div>
         </div>
@@ -750,6 +773,59 @@
           button.setAttribute("title", originalTitle);
         }
         button.innerHTML = originalContent;
+      }
+    }
+
+    function setUploadStatus(message, danger = false) {
+      const target = $("index-upload-status");
+      target.textContent = message;
+      target.classList.toggle("cu-error", danger);
+    }
+
+    async function uploadIndex(file) {
+      const button = $("upload-index");
+      const input = $("index-upload-file");
+      if (!file || button.disabled) return;
+      if (!file.name.toLowerCase().endsWith(".tar.gz")) {
+        setUploadStatus("Choose a .tar.gz index bundle.", true);
+        banner("Upload one .tar.gz index bundle.", true);
+        input.value = "";
+        return;
+      }
+
+      const originalContent = button.innerHTML;
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+      button.innerHTML = '<span class="cu-spinner" aria-hidden="true"></span> Uploading…';
+      setUploadStatus(`Uploading ${file.name}…`);
+      banner("Uploading index…", false);
+
+      try {
+        const form = new FormData();
+        form.append("file", file, file.name);
+        const response = await fetch("/api/indexes/upload", {
+          method: "POST",
+          body: form,
+        });
+        if (!response.ok) {
+          const body = await response.text();
+          let message = body || response.statusText;
+          try { message = JSON.parse(body).detail || message; } catch (_) { /* plain-text error */ }
+          throw new Error(message);
+        }
+
+        await load();
+        setUploadStatus("");
+        banner("Index uploaded successfully.", false);
+      } catch (e) {
+        const message = String(e.message || e);
+        setUploadStatus(message, true);
+        banner(message, true);
+      } finally {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+        button.innerHTML = originalContent;
+        input.value = "";
       }
     }
 
@@ -926,6 +1002,10 @@
     $("select-all").onclick = () => { state.repos.forEach((r) => state.selected.add(repoKey(r))); renderRepos(); };
     $("clear").onclick = () => { state.selected.clear(); renderRepos(); };
     $("refresh").onclick = load;
+    $("upload-index").onclick = () => $("index-upload-file").click();
+    $("index-upload-file").addEventListener("change", (event) => {
+      uploadIndex(event.target.files[0]);
+    });
     $("add-custom").onclick = () => {
       const git_repo = $("custom-url").value.trim();
       const git_branch = $("custom-branch").value.trim() || "main";
