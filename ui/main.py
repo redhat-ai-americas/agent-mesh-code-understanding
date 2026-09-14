@@ -17,6 +17,7 @@ from starlette.requests import Request
 import catalog
 import cluster
 import downloads
+import index_storage
 import indexes
 import uploads
 
@@ -110,16 +111,16 @@ def download_index(run_id: str) -> FileResponse:
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Unable to validate MLflow index run: {exc}") from exc
 
-    workspace = downloads.create_download_workspace()
+    workspace = index_storage.create_index_workspace()
     try:
         archive_path, filename = downloads.create_index_archive(
             client,
             metadata,
             workspace,
-            downloads.configured_max_download_bytes(),
+            index_storage.configured_max_index_bytes(),
         )
     except Exception as exc:
-        downloads.cleanup_download_workspace(workspace)
+        index_storage.cleanup_index_workspace(workspace)
         if isinstance(exc, downloads.DownloadTooLargeError):
             raise HTTPException(status_code=413, detail=str(exc)) from exc
         if isinstance(exc, FileNotFoundError):
@@ -130,7 +131,7 @@ def download_index(run_id: str) -> FileResponse:
         path=archive_path,
         media_type="application/gzip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        background=BackgroundTask(downloads.cleanup_download_workspace, workspace),
+        background=BackgroundTask(index_storage.cleanup_index_workspace, workspace),
     )
 
 
@@ -152,8 +153,8 @@ async def upload_index(
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"MLflow is unavailable: {exc}") from exc
 
-    workspace = downloads.create_download_workspace()
-    max_bytes = downloads.configured_max_download_bytes()
+    workspace = index_storage.create_index_workspace()
+    max_bytes = index_storage.configured_max_index_bytes()
     try:
         archive_path = uploads.save_uploaded_archive(file, workspace, max_bytes)
         metadata = uploads.extract_uploaded_index(archive_path, workspace / "artifact", max_bytes)
@@ -171,7 +172,7 @@ async def upload_index(
         try:
             await file.close()
         finally:
-            downloads.cleanup_download_workspace(workspace)
+            index_storage.cleanup_index_workspace(workspace)
 
 
 @app.get("/api/jobs")

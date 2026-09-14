@@ -45,7 +45,7 @@ def upload_workspaces(monkeypatch, tmp_path):
         created.append(workspace)
         return workspace
 
-    monkeypatch.setattr(main.downloads, "create_download_workspace", create_workspace)
+    monkeypatch.setattr(main.index_storage, "create_index_workspace", create_workspace)
     return created
 
 
