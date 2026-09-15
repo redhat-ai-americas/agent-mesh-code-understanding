@@ -31,3 +31,4 @@ dist/
 console-plugin/package-lock.json
 *.pyc
 .pytest_cache/
+.idea
