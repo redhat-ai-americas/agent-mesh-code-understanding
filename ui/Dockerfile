@@ -1,0 +1,17 @@
+FROM registry.access.redhat.com/ubi9/python-311:latest
+
+USER root
+ARG UV_VERSION=0.12.11
+RUN python3 -m pip install --no-cache-dir "uv==${UV_VERSION}"
+
+WORKDIR /opt/app-root/src
+
+COPY pyproject.toml .
+COPY uv.lock .
+RUN uv sync --frozen --no-install-project --no-dev
+
+COPY . .
+
+USER 1001
+EXPOSE 8080
+CMD ["/opt/app-root/src/.venv/bin/python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
