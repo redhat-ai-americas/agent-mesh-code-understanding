@@ -1,0 +1,12 @@
+[project]
+name = "agent-mesh-ui"
+version = "0.1.0"
+description = "Code Understanding console"
+requires-python = ">=3.11,<4"
+dependencies = [
+    "fastapi>=0.115.6",
+    "uvicorn[standard]>=0.34.0",
+    "kubernetes>=31.0.0",
+    "mlflow>=2.0.0",
+    "pydantic>=2.0.0",
+]
