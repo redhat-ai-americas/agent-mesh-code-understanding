@@ -7,6 +7,20 @@ GATEWAY_HOST        	:= $(shell oc get gateway data-science-gateway -n openshift
 PIPELINE_GIT_REPO   	?=
 PIPELINE_GIT_BRANCH 	?=
 PIPELINE_GIT_REPO_LIST	?=
+DEPLOY_EMBEDDING_MODEL ?= false
+
+.PHONY: \
+	install \
+	deploy-embedding-model \
+	deploy-notebooks \
+	apply-secrets \
+	build-images \
+	upload-pipelines \
+	upload-mlflow-assets \
+	run-adhoc-query \
+	run-pipelines \
+	deploy-otel
+
 install:
 	@set -a && . $(ENV_FILE) && set +a && \
 	\
@@ -46,6 +60,9 @@ install:
 		--set pipelineTools.image.tag="$$KFP_PIPELINE_TOOLS_IMAGE_TAG" \
 		--set clusterDomain="$(CLUSTER_DOMAIN)" \
 		--set mlflowGatewayHost="$(GATEWAY_HOST)"
+	@if [ "$(DEPLOY_EMBEDDING_MODEL)" = "true" ]; then \
+		$(MAKE) deploy-embedding-model; \
+	fi
 	$(MAKE) apply-secrets
 	$(MAKE) deploy-otel
 	@set -a && . $(ENV_FILE) && set +a && \
@@ -55,6 +72,13 @@ install:
 	fi
 	$(MAKE) upload-pipelines
 	$(MAKE) deploy-notebooks
+
+deploy-embedding-model:
+	@set -a && . $(ENV_FILE) && set +a && \
+		echo "==> Deploying e5-mistral embedding model..." && \
+		helm upgrade --install e5-mistral resources/helm/e5-mistral \
+			--namespace "$$KFP_NAMESPACE" \
+			--create-namespace
 
 deploy-notebooks:
 	@set -a && . $(ENV_FILE) && set +a && \
@@ -104,6 +128,14 @@ deploy-notebooks:
 
 apply-secrets:
 	@set -a && . $(ENV_FILE) && set +a && \
+	if [ "$(DEPLOY_EMBEDDING_MODEL)" = "true" ]; then \
+		: "$${EMBED_LLM_TOKEN:=dummy}"; \
+		: "$${EMBED_LLM_API_BASE:=http://e5-mistral:8000/v1}"; \
+		: "$${EMBED_LLM_ID:=intfloat/e5-mistral-7b-instruct}"; \
+		: "$${EMBED_LLM_PROVIDER:=openai}"; \
+		: "$${EMBED_LLM_PROVIDER_SETTINGS_XML:=openai}"; \
+		export EMBED_LLM_TOKEN EMBED_LLM_API_BASE EMBED_LLM_ID EMBED_LLM_PROVIDER EMBED_LLM_PROVIDER_SETTINGS_XML; \
+	fi && \
 	\
 	echo "==> Applying git-credentials secret..." && \
 	oc create secret generic git-credentials \

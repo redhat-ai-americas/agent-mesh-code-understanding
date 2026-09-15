@@ -119,6 +119,13 @@ nohup python3 -m vllm.entrypoints.openai.api_server \
 
 ### Installing via Makefile
 1. Run the Makefile: `make install`
+2. To deploy the local `e5-mistral` embedding model as part of installation, run:
+   `make install DEPLOY_EMBEDDING_MODEL=true`
+
+   When enabled, missing embedding settings are defaulted to the in-cluster
+   `e5-mistral` service and stored in `code-understanding-env`. Explicit
+   `EMBED_LLM_*` values in `.env` are preserved. The model can also be
+   deployed independently with `make deploy-embedding-model`.
 
 ## Running the Code Understanding Workflow
 1. To run the **Code Understanding** pipeline for a single repository, run:
@@ -186,7 +193,6 @@ representation of the codebase that can be used for querying.
 The **Data Analysis** sub-workflow is used to query the generated GraphRAG index using the GraphRAG SDK.
 It includes both canned and adhoc queries that can be used to explore the 
 code and generate assets for the refactoring catalog, including a migration plan.
-
 
 
 

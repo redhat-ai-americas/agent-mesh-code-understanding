@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: e5-mistral
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: e5-mistral
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: e5-mistral
+  template:
+    metadata:
+      labels:
+        app: e5-mistral
+    spec:
+      serviceAccountName: e5-mistral
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      tolerations:
+        {{- toYaml .Values.tolerations | nindent 8 }}
+      containers:
+        - name: vllm
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - python3
+            - -m
+            - vllm.entrypoints.openai.api_server
+          args:
+            - --host=0.0.0.0
+            - --port=8000
+            - --model={{ .Values.model.name }}
+            - --served-model-name={{ .Values.model.name }}
+            - --runner=pooling
+            - --dtype=float16
+            - --max-model-len={{ .Values.model.maxModelLen }}
+            - --gpu-memory-utilization={{ .Values.model.gpuMemoryUtilization }}
+            - --trust-remote-code
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: HOME
+              value: /tmp
+            - name: HF_HOME
+              value: /model-cache
+            - name: XDG_CACHE_HOME
+              value: /model-cache/xdg
+            - name: VLLM_CACHE_ROOT
+              value: /model-cache/vllm
+            - name: TRITON_CACHE_DIR
+              value: /model-cache/triton
+            - name: NUMBA_CACHE_DIR
+              value: /tmp/numba
+            - name: TRANSFORMERS_CACHE
+              value: /model-cache/transformers
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            timeoutSeconds: 10
+            periodSeconds: 30
+            failureThreshold: 6
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            timeoutSeconds: 5
+            periodSeconds: 10
+            failureThreshold: 30
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            timeoutSeconds: 10
+            periodSeconds: 20
+            failureThreshold: 90
+          volumeMounts:
+            - name: model-cache
+              mountPath: /model-cache
+            - name: shm
+              mountPath: /dev/shm
+      volumes:
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: e5-mistral-cache
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.shmSize }}
